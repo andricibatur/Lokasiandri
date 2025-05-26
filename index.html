@@ -1,28 +1,28 @@
-<!DOCTYPE html>
-<html>
+<!DOCTYPE html><html>
 <head>
-  <title>GPS Tracker dengan Tag</title>
+  <title>GPS Tracker dengan Tag Lengkap</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-  />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     #map { height: 90vh; }
-    button { margin: 10px; padding: 10px; }
-    .popup-input {
-      width: 180px;
-    }
+    button { margin: 5px; padding: 10px; }
+    .popup-input { width: 180px; }
+    #tag-list { position: absolute; top: 0; right: 0; background: white; max-height: 90vh; overflow-y: auto; padding: 10px; width: 250px; border-left: 2px solid #ccc; }
+    #controls { margin-bottom: 10px; }
   </style>
 </head>
 <body>
-  <button onclick="startTracking()">Mulai Tracking</button>
-  <button onclick="stopTracking()">Stop Tracking</button>
+  <div id="controls">
+    <button onclick="startTracking()">Mulai Tracking</button>
+    <button onclick="stopTracking()">Stop Tracking</button>
+    <button onclick="addTag()">Tambah Tag Manual</button>
+    <button onclick="exportCSV()">Export CSV</button>
+    <input type="file" id="importFile" accept=".csv" onchange="importCSV(event)">
+    <button onclick="clearData()">Reset Data</button>
+  </div>
   <div id="map"></div>
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script>
+  <div id="tag-list"></div>  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>  <script>
     let map = L.map('map').setView([-6.2, 106.8], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors'
@@ -31,26 +31,23 @@
     let path = [];
     let polyline = L.polyline(path, { color: 'red' }).addTo(map);
     let watchId = null;
-    let tags = []; // Simpan semua tag yang dibuat
+    let currentPos = null;
+    let tags = [];
 
-    function createEditableMarker(lat, lng, index) {
-      const marker = L.marker([lat, lng]).addTo(map);
+    function saveToIndexedDB() {
+      localStorage.setItem('gps_tags', JSON.stringify(tags));
+      localStorage.setItem('gps_path', JSON.stringify(path));
+    }
 
-      const content = document.createElement('div');
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.placeholder = 'Keterangan...';
-      input.className = 'popup-input';
-      input.value = tags[index]?.text || '';
+    function loadFromIndexedDB() {
+      let storedTags = localStorage.getItem('gps_tags');
+      let storedPath = localStorage.getItem('gps_path');
+      if (storedTags) tags = JSON.parse(storedTags);
+      if (storedPath) path = JSON.parse(storedPath);
 
-      input.onchange = () => {
-        tags[index].text = input.value;
-      };
-
-      content.appendChild(input);
-      marker.bindPopup(content);
-
-      return marker;
+      path.forEach(p => polyline.addLatLng(p));
+      tags.forEach((tag, i) => createMarker(tag.lat, tag.lng, i, tag.text, tag.time));
+      updateTagList();
     }
 
     function startTracking() {
@@ -61,15 +58,12 @@
       watchId = navigator.geolocation.watchPosition(pos => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
-        const index = path.length;
+        currentPos = [lat, lng];
 
-        path.push([lat, lng]);
+        path.push(currentPos);
         polyline.setLatLngs(path);
-        map.setView([lat, lng], map.getZoom());
-
-        // Tambahkan tag & marker
-        tags.push({ lat, lng, text: "" });
-        createEditableMarker(lat, lng, index);
+        map.setView(currentPos, map.getZoom());
+        saveToIndexedDB();
       }, err => {
         console.error(err);
         alert("Gagal ambil lokasi.");
@@ -83,9 +77,90 @@
         navigator.geolocation.clearWatch(watchId);
         watchId = null;
         alert("Tracking dihentikan.");
-        console.log("Semua tags:", tags);
       }
     }
-  </script>
-</body>
-  <html/>
+
+    function addTag() {
+      if (!currentPos) {
+        alert("Belum ada lokasi. Mulai tracking dulu.");
+        return;
+      }
+
+      const [lat, lng] = currentPos;
+      const index = tags.length;
+      const timestamp = new Date().toLocaleString();
+      tags.push({ lat, lng, text: "", time: timestamp });
+      createMarker(lat, lng, index, "", timestamp);
+      updateTagList();
+      saveToIndexedDB();
+    }
+
+    function createMarker(lat, lng, index, text = "", time = "") {
+      const marker = L.marker([lat, lng]).addTo(map);
+      const content = document.createElement('div');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = 'Keterangan...';
+      input.className = 'popup-input';
+      input.value = text;
+
+      input.onchange = () => {
+        tags[index].text = input.value;
+        updateTagList();
+        saveToIndexedDB();
+      };
+
+      content.appendChild(input);
+      if (time) content.appendChild(document.createElement('br')).append(time);
+      marker.bindPopup(content);
+    }
+
+    function updateTagList() {
+      let tagListDiv = document.getElementById("tag-list");
+      tagListDiv.innerHTML = "<h4>Daftar Tag:</h4>" + tags.map((t, i) =>
+        `<div onclick="map.setView([${t.lat}, ${t.lng}], 18)"><b>${i + 1}</b>. ${t.text || '-'}<br><small>${t.time}</small></div><hr>`
+      ).join("");
+    }
+
+    function exportCSV() {
+      const rows = [['No', 'Latitude', 'Longitude', 'Keterangan', 'Waktu']].concat(
+        tags.map((t, i) => [i + 1, t.lat, t.lng, t.text, t.time])
+      );
+      const csv = rows.map(r => r.map(x => `"${x}"`).join(",")).join("\n");
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'tags.csv';
+      a.click();
+    }
+
+    function importCSV(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const lines = e.target.result.split("\n").slice(1);
+        lines.forEach(line => {
+          const [no, lat, lng, text, time] = line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(s => s.replace(/^"|"$/g, ''));
+          tags.push({ lat: parseFloat(lat), lng: parseFloat(lng), text, time });
+          createMarker(parseFloat(lat), parseFloat(lng), tags.length - 1, text, time);
+        });
+        updateTagList();
+        saveToIndexedDB();
+      };
+      reader.readAsText(file);
+    }
+
+    function clearData() {
+      if (confirm("Yakin reset semua data?")) {
+        tags = [];
+        path = [];
+        localStorage.clear();
+        location.reload();
+      }
+    }
+
+    loadFromIndexedDB();
+  </script></body>
+</html>
