@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>AI via OpenRouter</title>
+</head>
+<body>
+  <h2>Chat dengan AI (OpenRouter)</h2>
+  <textarea id="prompt" rows="4" cols="50" placeholder="Tulis pertanyaan..."></textarea><br>
+  <button onclick="kirimKeAI()">Kirim</button>
+  <pre id="hasil"></pre>
+
+  <script>
+    async function kirimKeAI() {
+      const prompt = document.getElementById("prompt").value;
+
+      const apiKey = "Bearer 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";
+      // Jangan lupa beri tanda kutip dan awalan "Bearer "
+
+      const hasilBox = document.getElementById("hasil");
+      hasilBox.innerText = "Menunggu jawaban...";
+
+      try {
+        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": apiKey,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://andricibatur.github.io/Lokasiandri/ai.html",
+            "X-Title": "InulBisnisAI"
+          },
+          body: JSON.stringify({
+            model: "mistralai/mixtral-8x7b",
+            messages: [
+              { role: "user", content: prompt }
+            ]
+          })
+        });
+
+        const data = await res.json();
+        const reply = data.choices?.[0]?.message?.content || "Gagal mendapat balasan.";
+        hasilBox.innerText = reply;
+      } catch (err) {
+        hasilBox.innerText = "Terjadi kesalahan: " + err.message;
+      }
+    }
+  </script>
+</body>
+</html>
