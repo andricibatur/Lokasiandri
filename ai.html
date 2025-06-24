@@ -1,48 +1,84 @@
 <!DOCTYPE html>
-<html>
+<html lang="id">
 <head>
   <meta charset="UTF-8">
-  <title>AI via OpenRouter</title>
+  <title>AI Chat IndexedDB</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; }
+    textarea { width: 100%; height: 80px; }
+    #chatlog { margin-top: 20px; white-space: pre-wrap; border-top: 1px solid #ccc; padding-top: 10px; }
+    .chat-item { margin-bottom: 15px; }
+    .q { font-weight: bold; }
+    .a { background: #f1f1f1; padding: 5px; border-radius: 5px; }
+  </style>
 </head>
 <body>
-  <h2>Chat dengan AI (OpenRouter)</h2>
-  <textarea id="prompt" rows="4" cols="50" placeholder="Tulis pertanyaan..."></textarea><br>
-  <button onclick="kirimKeAI()">Kirim</button>
-  <pre id="hasil"></pre>
+  <h2>Chat AI (OpenRouter + IndexedDB)</h2>
+  <textarea id="tanya" placeholder="Masukkan pertanyaan..."></textarea><br><br>
+  <button onclick="kirim()">Kirim</button>
+  <div id="chatlog"></div>
 
   <script>
-    async function kirimKeAI() {
-      const prompt = document.getElementById("prompt").value;
+    const apiKey = "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";
 
-      const apiKey = "Bearer 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";
-      // Jangan lupa beri tanda kutip dan awalan "Bearer "
+    async function kirim() {
+      const q = document.getElementById("tanya").value.trim();
+      if (!q) return;
+      document.getElementById("tanya").value = '';
+      const pesan = { role: "user", content: q };
 
-      const hasilBox = document.getElementById("hasil");
-      hasilBox.innerText = "Menunggu jawaban...";
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + apiKey,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "openai/gpt-3.5-turbo",
+          messages: [pesan]
+        })
+      });
 
-      try {
-        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": apiKey,
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://andricibatur.github.io/Lokasiandri/ai.html",
-            "X-Title": "InulBisnisAI"
-          },
-          body: JSON.stringify({
-            model: "mistralai/mixtral-8x7b",
-            messages: [
-              { role: "user", content: prompt }
-            ]
-          })
-        });
+      const data = await response.json();
+      const jawab = data.choices?.[0]?.message?.content || "Gagal menjawab";
 
-        const data = await res.json();
-        const reply = data.choices?.[0]?.message?.content || "Gagal mendapat balasan.";
-        hasilBox.innerText = reply;
-      } catch (err) {
-        hasilBox.innerText = "Terjadi kesalahan: " + err.message;
-      }
+      // Simpan ke IndexedDB
+      simpanChat(q, jawab);
+      tampilkanChat();
+    }
+
+    // IndexedDB Setup
+    let db;
+    const req = indexedDB.open("db_chat_ai", 1);
+    req.onupgradeneeded = e => {
+      db = e.target.result;
+      db.createObjectStore("chat", { keyPath: "id", autoIncrement: true });
+    };
+    req.onsuccess = e => {
+      db = e.target.result;
+      tampilkanChat();
+    };
+
+    function simpanChat(q, a) {
+      const tx = db.transaction("chat", "readwrite");
+      const store = tx.objectStore("chat");
+      store.add({ t: new Date(), q, a });
+    }
+
+    function tampilkanChat() {
+      const tx = db.transaction("chat", "readonly");
+      const store = tx.objectStore("chat");
+      const req = store.getAll();
+      req.onsuccess = () => {
+        const log = req.result.map(item => `
+          <div class="chat-item">
+            <div class="q">🧠 ${item.q}</div>
+            <div class="a">${item.a}</div>
+          </div>
+        `).join('');
+        document.getElementById("chatlog").innerHTML = log;
+      };
     }
   </script>
 </body>
