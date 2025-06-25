@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Catatan Keuangan AI Mistral</title>
+  <title>Catatan Keuangan AI DeepSeek</title>
   <style>
     body { font-family: sans-serif; margin: 15px; }
     textarea, pre { width: 100%; box-sizing: border-box; }
@@ -13,9 +13,9 @@
 </head>
 <body>
 
-<h3>📒 Catatan Keuangan Cerdas</h3>
+<h3>📒 Catatan Keuangan Cerdas (DeepSeek)</h3>
 <label>✍️ Catatan Baru:</label>
-<textarea id="input"></textarea>
+<textarea id="input" placeholder="Contoh: 25 Jun - Jual kambing 2jt [+]"></textarea>
 
 <div id="controls">
   <button onclick="simpan()">💾 Simpan</button>
@@ -28,8 +28,8 @@
 <pre id="aiResult">(belum ada)</pre>
 
 <script>
-const API_KEY = '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'; // 🔁 Ganti dengan key aktif Inul
-const MODEL = 'deepseek-ai/deepseek-coder';
+const API_KEY = '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'; // 🔁 Ganti dengan API Key Inul
+const MODEL = 'deepseek/deepseek-chat-v3';
 const MAX_TOKENS = 1000;
 
 // IndexedDB setup
@@ -64,24 +64,29 @@ function ambilSemua(callback) {
 async function tanyaAI() {
   document.getElementById('aiResult').textContent = '⏳ Menghubungi AI...';
   ambilSemua(async (semuaCatatan) => {
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + API_KEY,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          { role: 'system', content: 'Kamu adalah asisten keuangan. Ringkas dan buat laporan dari catatan berikut.' },
-          { role: 'user', content: semuaCatatan }
-        ],
-        max_tokens: MAX_TOKENS
-      })
-    });
-    const data = await res.json();
-    const hasil = data.choices?.[0]?.message?.content || (data.error?.message || '❌ Gagal mendapatkan jawaban');
-    document.getElementById('aiResult').textContent = hasil;
+    try {
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: [
+            { role: 'system', content: 'Kamu adalah asisten keuangan. Baca semua catatan dan buatkan ringkasan pemasukan, pengeluaran, dan saldo akhir.' },
+            { role: 'user', content: semuaCatatan }
+          ],
+          max_tokens: MAX_TOKENS
+        })
+      });
+
+      const data = await res.json();
+      const hasil = data.choices?.[0]?.message?.content || (data.error?.message || '❌ Gagal mendapatkan jawaban');
+      document.getElementById('aiResult').textContent = hasil;
+    } catch (err) {
+      document.getElementById('aiResult').textContent = '❌ Error jaringan atau server: ' + err.message;
+    }
   });
 }
 
