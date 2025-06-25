@@ -2,76 +2,68 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Chatbot Mistral - Aman</title>
+  <title>Catatan Keuangan AI Mistral</title>
   <style>
-    body { font-family: sans-serif; margin: 20px; }
-    #chatLog { border: 1px solid #ccc; height: 300px; overflow-y: auto; padding: 10px; }
-    #inputBox { width: 100%; margin-top: 10px; }
-    #controls { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; }
+    body { font-family: sans-serif; margin: 15px; }
+    textarea, pre { width: 100%; box-sizing: border-box; }
+    textarea { height: 100px; margin-top: 5px; }
+    #controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    #aiResult { background: #f9f9f9; padding: 10px; margin-top: 10px; border: 1px solid #ccc; }
   </style>
 </head>
 <body>
 
-<h2>🤖 Chatbot Mistral (OpenRouter)</h2>
-<div id="chatLog"></div>
-<textarea id="inputBox" rows="2" placeholder="Tulis pesan..."></textarea>
+<h3>📒 Catatan Keuangan Cerdas</h3>
+<label>✍️ Catatan Baru:</label>
+<textarea id="input"></textarea>
+
 <div id="controls">
-  <button id="sendBtn">Kirim</button>
-  <button id="exportBtn">Ekspor</button>
-  <button id="importBtn">Impor</button>
-  <input type="file" id="importFile" accept=".json" style="display:none">
+  <button onclick="simpan()">💾 Simpan</button>
+  <button onclick="tanyaAI()">🤖 Tanya ke AI</button>
+  <button onclick="exportJSON()">📤 Ekspor JSON</button>
+  <button onclick="printLaporan()">🖨️ Cetak Laporan</button>
 </div>
 
+<h4>📋 Hasil AI:</h4>
+<pre id="aiResult">(belum ada)</pre>
+
 <script>
-const API_KEY = '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'; // 🔁 GANTI dengan API Key Inul
+const API_KEY = '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'; // 🔁 Ganti dengan key aktif Inul
 const MODEL = 'mistralai/mistral-7b-instruct';
 const MAX_TOKENS = 1000;
 
-const chatLog = document.getElementById('chatLog');
-const inputBox = document.getElementById('inputBox');
-const sendBtn = document.getElementById('sendBtn');
-const exportBtn = document.getElementById('exportBtn');
-const importBtn = document.getElementById('importBtn');
-const importFile = document.getElementById('importFile');
-
+// IndexedDB setup
 let db;
-const request = indexedDB.open('ChatDB', 1);
-request.onupgradeneeded = e => {
+const req = indexedDB.open('CatatanKeuangan', 1);
+req.onupgradeneeded = e => {
   db = e.target.result;
-  if (!db.objectStoreNames.contains('messages')) {
-    db.createObjectStore('messages', { keyPath: 'id', autoIncrement: true });
-  }
+  db.createObjectStore('catatan', { keyPath: 'id', autoIncrement: true });
 };
-request.onsuccess = e => { db = e.target.result; loadChat(); };
-request.onerror = e => console.error('DB Error:', e);
+req.onsuccess = e => { db = e.target.result; };
+req.onerror = e => alert('IndexedDB gagal');
 
-function save(role, content) {
-  const tx = db.transaction('messages', 'readwrite');
-  tx.objectStore('messages').add({ role, content, time: Date.now() });
+// Simpan catatan ke IndexedDB
+function simpan() {
+  const isi = document.getElementById('input').value.trim();
+  if (!isi) return alert('Isi catatan kosong');
+  const tx = db.transaction('catatan', 'readwrite');
+  tx.objectStore('catatan').add({ isi, waktu: Date.now() });
+  document.getElementById('input').value = '';
+  alert('✅ Disimpan!');
 }
 
-function print(role, content) {
-  const div = document.createElement('div');
-  div.textContent = (role === 'user' ? '🧍: ' : '🤖: ') + content;
-  chatLog.appendChild(div);
-  chatLog.scrollTop = chatLog.scrollHeight;
-  save(role, content);
+// Ambil semua catatan dari IndexedDB
+function ambilSemua(callback) {
+  const tx = db.transaction('catatan', 'readonly');
+  const store = tx.objectStore('catatan');
+  const req = store.getAll();
+  req.onsuccess = () => callback(req.result.map(c => c.isi).join('\n'));
 }
 
-function loadChat() {
-  const tx = db.transaction('messages', 'readonly');
-  tx.objectStore('messages').getAll().onsuccess = e => {
-    e.target.result.forEach(msg => print(msg.role, msg.content));
-  };
-}
-
-sendBtn.onclick = async () => {
-  const msg = inputBox.value.trim();
-  if (!msg) return;
-  print('user', msg);
-  inputBox.value = '';
-
-  try {
+// Kirim ke AI
+async function tanyaAI() {
+  document.getElementById('aiResult').textContent = '⏳ Menghubungi AI...';
+  ambilSemua(async (semuaCatatan) => {
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -80,57 +72,41 @@ sendBtn.onclick = async () => {
       },
       body: JSON.stringify({
         model: MODEL,
-        messages: [{ role: 'user', content: msg }],
+        messages: [
+          { role: 'system', content: 'Kamu adalah asisten keuangan. Ringkas dan buat laporan dari catatan berikut.' },
+          { role: 'user', content: semuaCatatan }
+        ],
         max_tokens: MAX_TOKENS
       })
     });
-
     const data = await res.json();
-    if (data.error) {
-      print('assistant', '⚠️ Error: ' + data.error.message);
-    } else if (!data.choices || !data.choices[0]) {
-      print('assistant', '⚠️ Tidak ada balasan dari model.');
-    } else {
-      const reply = data.choices[0].message.content;
-      print('assistant', reply);
-    }
-  } catch (err) {
-    print('assistant', '⚠️ Gagal fetch: ' + err.message);
-  }
-};
+    const hasil = data.choices?.[0]?.message?.content || (data.error?.message || '❌ Gagal mendapatkan jawaban');
+    document.getElementById('aiResult').textContent = hasil;
+  });
+}
 
-exportBtn.onclick = () => {
-  const tx = db.transaction('messages', 'readonly');
-  tx.objectStore('messages').getAll().onsuccess = e => {
-    const data = JSON.stringify(e.target.result);
+// Ekspor data
+function exportJSON() {
+  const tx = db.transaction('catatan', 'readonly');
+  tx.objectStore('catatan').getAll().onsuccess = e => {
+    const data = JSON.stringify(e.target.result, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'chat-history.json';
+    a.download = 'catatan-keuangan.json';
     a.click();
   };
-};
+}
 
-importBtn.onclick = () => importFile.click();
-importFile.onchange = () => {
-  const file = importFile.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    try {
-      const msgs = JSON.parse(e.target.result);
-      const tx = db.transaction('messages', 'readwrite');
-      msgs.forEach(msg => tx.objectStore('messages').add(msg));
-      setTimeout(() => {
-        chatLog.innerHTML = '';
-        loadChat();
-      }, 500);
-    } catch (e) {
-      alert('Gagal impor: ' + e.message);
-    }
-  };
-  reader.readAsText(file);
-};
+// Cetak laporan
+function printLaporan() {
+  const isi = document.getElementById('aiResult').textContent;
+  if (!isi || isi === '(belum ada)') return alert('Tidak ada laporan untuk dicetak');
+  const w = window.open();
+  w.document.write('<pre>' + isi + '</pre>');
+  w.print();
+}
 </script>
+
 </body>
 </html>
