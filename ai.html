@@ -1,69 +1,95 @@
-<!DOCTYPE html>
-<html>
+<!DOCTYPE html><html>
 <head>
   <meta charset="UTF-8">
-  <title>Catatan Keuangan AI DeepSeek</title>
+  <title>Aplikasi AI Multi-Laporan</title>
   <style>
     body { font-family: sans-serif; margin: 15px; }
-    textarea, pre { width: 100%; box-sizing: border-box; }
-    textarea { height: 100px; margin-top: 5px; }
-    #controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-    #aiResult { background: #f9f9f9; padding: 10px; margin-top: 10px; border: 1px solid #ccc; }
+    section { border: 1px solid #ccc; padding: 10px; margin-bottom: 15px; }
+    textarea { width: 100%; box-sizing: border-box; margin-top: 5px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .result { background: #f9f9f9; padding: 10px; margin-top: 10px; border: 1px solid #bbb; white-space: pre-wrap; }
+    button { padding: 6px 12px; border-radius: 4px; border: none; cursor: pointer; }
+    button:hover { opacity: 0.9; }
   </style>
 </head>
-<body>
-
-<h3>📒 Catatan Keuangan Cerdas (DeepSeek)</h3>
-<label>✍️ Catatan Baru:</label>
-<textarea id="input" placeholder="Contoh: 25 Jun - Jual kambing 2jt [+]"></textarea>
-
-<div id="controls">
-  <button onclick="simpan()">💾 Simpan</button>
-  <button onclick="tanyaAI()">🤖 Tanya ke AI</button>
-  <button onclick="exportJSON()">📤 Ekspor JSON</button>
-  <button onclick="printLaporan()">🖨️ Cetak Laporan</button>
-</div>
-
-<h4>📋 Hasil AI:</h4>
-<pre id="aiResult">(belum ada)</pre>
-
-<script>
-const API_KEY = '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'; // 🔁 Ganti dengan API Key Inul
+<body><h2>Aplikasi Catatan & Laporan AI</h2><section id="section-financial">
+  <h3>✍️ Catatan Keuangan</h3>
+  <textarea id="input-financial" placeholder="Contoh: 25 Jun - Jual kambing 2jt [+]&#10;25 Jun - Beli pakan 150rb [-]"></textarea>
+  <div class="controls">
+    <button onclick="simpan('transaksi')">💾 Simpan Keuangan</button>
+    <button onclick="tanyaAI('transaksi')">🤖 Laporan Keuangan</button>
+  </div>
+  <div id="result-transaksi" class="result">(belum ada ringkasan)</div>
+</section><section id="section-schedule">
+  <h3>📅 Catatan Jadwal</h3>
+  <textarea id="input-schedule" placeholder="Contoh: 26 Jun - Rapat proyek jam 10:00"></textarea>
+  <div class="controls">
+    <button onclick="simpan('jadwal')">💾 Simpan Jadwal</button>
+    <button onclick="tanyaAI('jadwal')">🤖 Laporan Jadwal</button>
+  </div>
+  <div id="result-jadwal" class="result">(belum ada ringkasan)</div>
+</section><section id="section-notes">
+  <h3>📝 Catatan Umum</h3>
+  <textarea id="input-notes" placeholder="Contoh: Persiapan pasar ternak tanggal 30 Jun"></textarea>
+  <div class="controls">
+    <button onclick="simpan('notes')">💾 Simpan Catatan</button>
+    <button onclick="tanyaAI('notes')">🤖 Laporan Catatan</button>
+  </div>
+  <div id="result-notes" class="result">(belum ada ringkasan)</div>
+</section><script>
+const API_KEY = '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'; // ganti dengan API Key Inul
 const MODEL = 'deepseek/deepseek-chat-v3';
-const MAX_TOKENS = 1000;
+const MAX_TOKENS = 2000;
 
-// IndexedDB setup
+// Setup IndexedDB
 let db;
-const req = indexedDB.open('CatatanKeuangan', 1);
+const req = indexedDB.open('AppDB', 1);
 req.onupgradeneeded = e => {
   db = e.target.result;
-  db.createObjectStore('catatan', { keyPath: 'id', autoIncrement: true });
+  ['transaksi','jadwal','notes','summaries'].forEach(storeName => {
+    if (!db.objectStoreNames.contains(storeName)) {
+      db.createObjectStore(storeName, { keyPath: 'id', autoIncrement: true });
+    }
+  });
 };
 req.onsuccess = e => { db = e.target.result; };
-req.onerror = e => alert('IndexedDB gagal');
+req.onerror = e => alert('IndexedDB gagal: ' + e.target.errorCode);
 
-// Simpan catatan ke IndexedDB
-function simpan() {
-  const isi = document.getElementById('input').value.trim();
-  if (!isi) return alert('Isi catatan kosong');
-  const tx = db.transaction('catatan', 'readwrite');
-  tx.objectStore('catatan').add({ isi, waktu: Date.now() });
-  document.getElementById('input').value = '';
-  alert('✅ Disimpan!');
+// Simpan catatan
+function simpan(store) {
+  const input = document.getElementById('input-' + store).value.trim();
+  if (!input) return alert('Isi tidak boleh kosong.');
+  const tx = db.transaction(store, 'readwrite');
+  tx.objectStore(store).add({ content: input, time: Date.now() });
+  document.getElementById('input-' + store).value = '';
+  alert('Disimpan ke ' + store);
 }
 
-// Ambil semua catatan dari IndexedDB
-function ambilSemua(callback) {
-  const tx = db.transaction('catatan', 'readonly');
-  const store = tx.objectStore('catatan');
-  const req = store.getAll();
-  req.onsuccess = () => callback(req.result.map(c => c.isi).join('\n'));
+// Ambil semua catatan
+function ambilSemua(store, cb) {
+  const tx = db.transaction(store, 'readonly');
+  tx.objectStore(store).getAll().onsuccess = e => {
+    const arr = e.target.result.map(r => r.content);
+    cb(arr.join('\n'));
+  };
 }
 
-// Kirim ke AI
-async function tanyaAI() {
-  document.getElementById('aiResult').textContent = '⏳ Menghubungi AI...';
-  ambilSemua(async (semuaCatatan) => {
+// Simpan ringkasan
+function saveSummary(type, text) {
+  const tx = db.transaction('summaries','readwrite');
+  tx.objectStore('summaries').add({ type, summary: text, time: Date.now() });
+}
+
+// Kirim ke AI dan tampil/simpan hasil
+async function tanyaAI(type) {
+  const resultEl = document.getElementById('result-' + type);
+  resultEl.textContent = '⏳ Menghubungi AI...';
+  ambilSemua(type, async dataText => {
+    const systemPrompts = {
+      transaksi: 'Anda adalah asisten keuangan. Hitung total pemasukan, total pengeluaran, dan saldo akhir dari data berikut. Pemasukan ditandai [+], pengeluaran [-].',
+      jadwal: 'Anda adalah asisten produktivitas. Buat ringkasan jadwal berikut dalam poin-poin urut berdasarkan waktu.',
+      notes: 'Anda adalah asisten catatan. Ringkas poin-poin penting dari catatan umum berikut.'
+    };
     try {
       const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -74,44 +100,20 @@ async function tanyaAI() {
         body: JSON.stringify({
           model: MODEL,
           messages: [
-            { role: 'system', content: 'Kamu adalah asisten keuangan. Baca semua catatan dan buatkan ringkasan pemasukan, pengeluaran, dan saldo akhir.' },
-            { role: 'user', content: semuaCatatan }
+            { role: 'system', content: systemPrompts[type] },
+            { role: 'user', content: dataText }
           ],
           max_tokens: MAX_TOKENS
         })
       });
-
       const data = await res.json();
-      const hasil = data.choices?.[0]?.message?.content || (data.error?.message || '❌ Gagal mendapatkan jawaban');
-      document.getElementById('aiResult').textContent = hasil;
+      const reply = data.choices?.[0]?.message?.content || data.error?.message || 'Tidak ada balasan';
+      resultEl.textContent = reply;
+      saveSummary(type, reply);
     } catch (err) {
-      document.getElementById('aiResult').textContent = '❌ Error jaringan atau server: ' + err.message;
+      resultEl.textContent = '❌ Error: ' + err.message;
     }
   });
 }
-
-// Ekspor data
-function exportJSON() {
-  const tx = db.transaction('catatan', 'readonly');
-  tx.objectStore('catatan').getAll().onsuccess = e => {
-    const data = JSON.stringify(e.target.result, null, 2);
-    const blob = new Blob([data], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'catatan-keuangan.json';
-    a.click();
-  };
-}
-
-// Cetak laporan
-function printLaporan() {
-  const isi = document.getElementById('aiResult').textContent;
-  if (!isi || isi === '(belum ada)') return alert('Tidak ada laporan untuk dicetak');
-  const w = window.open();
-  w.document.write('<pre>' + isi + '</pre>');
-  w.print();
-}
-</script>
-
-</body>
+</script></body>
 </html>
