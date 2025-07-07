@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
-  <title>Rekam Lokasi</title>
+  <title>Rekam Lokasi dengan Jarak</title>
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; }
     table { width: 100%; border-collapse: collapse; margin-top: 20px; }
@@ -38,6 +38,7 @@
         <th>Koordinat</th>
         <th>Keterangan</th>
         <th>Jumlah</th>
+        <th>Sisa Jarak (m)</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -83,23 +84,10 @@
       };
     };
 
-    function displayData() {
+    function displayData(rows = []) {
       const tbody = document.querySelector("#report tbody");
       tbody.innerHTML = "";
-      const tx = db.transaction("lokasi", "readonly");
-      const store = tx.objectStore("lokasi");
-      store.openCursor().onsuccess = e => {
-        const cursor = e.target.result;
-        if (cursor) {
-          const tr = document.createElement("tr");
-          tr.dataset.coords = cursor.value.coords;
-          tr.innerHTML = `<td>${cursor.value.coords}</td>
-                          <td>${cursor.value.desc}</td>
-                          <td>${cursor.value.amount}</td>`;
-          tbody.appendChild(tr);
-          cursor.continue();
-        }
-      };
+      rows.forEach(row => tbody.appendChild(row));
     }
 
     function getDistance(lat1, lon1, lat2, lon2) {
@@ -118,16 +106,34 @@
       navigator.geolocation.watchPosition(pos => {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
-        document.querySelectorAll("#report tbody tr").forEach(row => {
-          const [rLat, rLon] = row.dataset.coords.split(",").map(Number);
-          const dist = getDistance(lat, lon, rLat, rLon);
-          row.classList.remove("blink-red", "blink-green");
-          if (dist < 5) {
-            row.classList.add("blink-green");
-          } else if (dist < 50) {
-            row.classList.add("blink-red");
+        const tx = db.transaction("lokasi", "readonly");
+        const store = tx.objectStore("lokasi");
+        const rows = [];
+        store.openCursor().onsuccess = e => {
+          const cursor = e.target.result;
+          if (cursor) {
+            const [rLat, rLon] = cursor.value.coords.split(",").map(Number);
+            const dist = getDistance(lat, lon, rLat, rLon);
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>${cursor.value.coords}</td>
+              <td>${cursor.value.desc}</td>
+              <td>${cursor.value.amount}</td>
+              <td>${Math.round(dist)} m</td>`;
+            tr.classList.remove("blink-red", "blink-green");
+            if (dist < 5) {
+              tr.classList.add("blink-green");
+            } else if (dist < 900) {
+              tr.classList.add("blink-red");
+            }
+            tr.dataset.dist = dist;
+            rows.push(tr);
+            cursor.continue();
+          } else {
+            rows.sort((a,b) => a.dataset.dist - b.dataset.dist);
+            displayData(rows);
           }
-        });
+        };
       });
     }
   </script>
