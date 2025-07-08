@@ -23,17 +23,33 @@
       text-align: left; 
       word-break: break-word;
     }
-    .blink-red { animation: blinkRed 1s infinite; }
-    .blink-green { animation: blinkGreen 1s infinite; }
-    @keyframes blinkRed {
-      0% { background: #fff; }
-      50% { background: red; color: #fff; }
-      100% { background: #fff; }
+    .status-indicator {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 5px;
+    }
+    .status-close {
+      background-color: green;
+      animation: blinkGreen 1.5s infinite;
+    }
+    .status-medium {
+      background-color: orange;
+      animation: blinkOrange 1.5s infinite;
+    }
+    .status-far {
+      background-color: red;
     }
     @keyframes blinkGreen {
-      0% { background: #fff; }
-      50% { background: green; color: #fff; }
-      100% { background: #fff; }
+      0% { opacity: 1; }
+      50% { opacity: 0.3; }
+      100% { opacity: 1; }
+    }
+    @keyframes blinkOrange {
+      0% { opacity: 1; }
+      50% { opacity: 0.3; }
+      100% { opacity: 1; }
     }
     .completed { background-color: #f0f0f0; color: #888; }
     .history { display: none; background-color: #f9f9f9; }
@@ -41,12 +57,17 @@
       padding: 8px 12px;
       margin: 5px 0;
       font-size: 14px;
+      border: 1px solid #ccc;
+      background-color: #f5f5f5;
+      border-radius: 4px;
     }
     input, select {
       padding: 8px;
       margin: 5px 0;
       width: 100%;
       box-sizing: border-box;
+      border: 1px solid #ccc;
+      border-radius: 4px;
     }
     .form-group {
       margin-bottom: 10px;
@@ -56,6 +77,7 @@
       border: 1px solid #ccc;
       background-color: #f1f1f1;
       display: flex;
+      border-radius: 4px 4px 0 0;
     }
     .tab button {
       flex: 1;
@@ -64,6 +86,8 @@
       cursor: pointer;
       padding: 10px;
       transition: 0.3s;
+      border-radius: 0;
+      margin: 0;
     }
     .tab button.active {
       background-color: #ddd;
@@ -73,6 +97,7 @@
       padding: 6px;
       border: 1px solid #ccc;
       border-top: none;
+      border-radius: 0 0 4px 4px;
     }
     .tabcontent.active {
       display: block;
@@ -84,6 +109,20 @@
     }
     .action-buttons button {
       flex: 1;
+    }
+    .edit-form {
+      display: none;
+      background-color: #f9f9f9;
+      padding: 10px;
+      margin-top: 5px;
+      border-radius: 4px;
+    }
+    .editable {
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    .editable:hover {
+      background-color: #f0f0f0;
     }
   </style>
 </head>
@@ -128,10 +167,12 @@
       <thead>
         <tr>
           <th width="30px"></th>
+          <th width="30px">Status</th>
           <th>Koordinat</th>
           <th>Keterangan</th>
           <th>Jumlah</th>
           <th>Jarak (m)</th>
+          <th>Aksi</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -148,10 +189,12 @@
       <thead>
         <tr>
           <th width="30px"></th>
+          <th width="30px">Status</th>
           <th>Koordinat</th>
           <th>Keterangan</th>
           <th>Jumlah</th>
           <th>Jarak (m)</th>
+          <th>Aksi</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -175,7 +218,7 @@
   <script>
     let db;
     let showHistory = false;
-    const request = indexedDB.open("lokasiDB", 2);
+    const request = indexedDB.open("lokasiDB", 3);
     
     request.onerror = e => console.error(e.target.error);
     
@@ -204,13 +247,11 @@
     };
 
     function migrateDataIfNeeded() {
-      // Jika versi sebelumnya (1) hanya memiliki store "lokasi"
       const tx = db.transaction(["lokasi"], "readonly");
       const store = tx.objectStore("lokasi");
       store.getAll().onsuccess = function(e) {
         const allData = e.target.result;
         if (allData && allData.length > 0 && !allData[0].hasOwnProperty('completed')) {
-          // Migrasi data ke struktur baru
           const migrateTx = db.transaction(["lokasi", "completed", "history"], "readwrite");
           const lokasiStore = migrateTx.objectStore("lokasi");
           const completedStore = migrateTx.objectStore("completed");
@@ -218,7 +259,6 @@
           
           allData.forEach(item => {
             if (item.completed) {
-              // Pindahkan ke completed
               const newItem = {...item};
               delete newItem.id;
               completedStore.add(newItem);
@@ -262,7 +302,6 @@
       
       request.onsuccess = function(e) {
         const locationId = e.target.result;
-        // Tambahkan ke history
         historyStore.add({
           locationId,
           action: "created",
@@ -320,30 +359,34 @@
             const dist = getDistance(lat, lon, rLat, rLon);
             const tr = document.createElement("tr");
             tr.dataset.id = cursor.value.id;
+            
+            // Determine status indicator
+            let statusClass = "status-far";
+            if (dist < 5) statusClass = "status-close";
+            else if (dist < 900) statusClass = "status-medium";
+            
             tr.innerHTML = `
               <td><input type="checkbox" class="select-row"></td>
-              <td>${cursor.value.coords}</td>
-              <td>${cursor.value.desc}</td>
-              <td>${cursor.value.amount}</td>
-              <td>${Math.round(dist)} m</td>`;
+              <td><span class="status-indicator ${statusClass}" title="Jarak: ${Math.round(dist)} m"></span></td>
+              <td class="editable" data-field="coords">${cursor.value.coords}</td>
+              <td class="editable" data-field="desc">${cursor.value.desc}</td>
+              <td class="editable" data-field="amount">${cursor.value.amount}</td>
+              <td>${Math.round(dist)} m</td>
+              <td>
+                <button class="edit-btn" onclick="editRow(${cursor.value.id}, 'lokasi')">Edit</button>
+              </td>`;
               
             // Add history row
             const historyRow = document.createElement("tr");
             historyRow.className = "history";
             historyRow.dataset.id = cursor.value.id;
             historyRow.innerHTML = `
-              <td colspan="5">
+              <td colspan="7">
                 <small>Dibuat: ${new Date(cursor.value.timestamp).toLocaleString()}</small>
                 <button onclick="showLocationHistory(${cursor.value.id})">Lihat Riwayat</button>
                 <div id="history-${cursor.value.id}"></div>
               </td>`;
               
-            tr.classList.remove("blink-red", "blink-green");
-            if (dist < 5) {
-              tr.classList.add("blink-green");
-            } else if (dist < 900) {
-              tr.classList.add("blink-red");
-            }
             tr.dataset.dist = dist;
             rows.push(tr);
             
@@ -355,6 +398,7 @@
           } else {
             rows.sort((a,b) => a.dataset.dist - b.dataset.dist);
             displayData(rows);
+            setupEditableCells();
           }
         };
         
@@ -371,20 +415,191 @@
             const tr = document.createElement("tr");
             tr.className = "completed";
             tr.dataset.id = cursor.value.id;
+            
             tr.innerHTML = `
               <td><input type="checkbox" class="select-row"></td>
-              <td>${cursor.value.coords}</td>
-              <td>${cursor.value.desc}</td>
-              <td>${cursor.value.amount}</td>
-              <td>${Math.round(dist)} m</td>`;
+              <td><span class="status-indicator status-far" title="Jarak: ${Math.round(dist)} m"></span></td>
+              <td class="editable" data-field="coords">${cursor.value.coords}</td>
+              <td class="editable" data-field="desc">${cursor.value.desc}</td>
+              <td class="editable" data-field="amount">${cursor.value.amount}</td>
+              <td>${Math.round(dist)} m</td>
+              <td>
+                <button class="edit-btn" onclick="editRow(${cursor.value.id}, 'completed')">Edit</button>
+              </td>`;
+              
             completedRows.push(tr);
             cursor.continue();
           } else {
             completedRows.sort((a,b) => a.dataset.dist - b.dataset.dist);
             displayCompletedData(completedRows);
+            setupEditableCells();
           }
         };
       }, null, { enableHighAccuracy: true });
+    }
+
+    // Setup editable cells
+    function setupEditableCells() {
+      document.querySelectorAll('.editable').forEach(cell => {
+        cell.addEventListener('click', function() {
+          const row = this.closest('tr');
+          const id = parseInt(row.dataset.id);
+          const storeName = row.classList.contains('completed') ? 'completed' : 'lokasi';
+          const field = this.dataset.field;
+          const currentValue = this.textContent;
+          
+          // Create edit form
+          const editForm = document.createElement('div');
+          editForm.className = 'edit-form';
+          editForm.innerHTML = `
+            <input type="${field === 'amount' ? 'number' : 'text'}" value="${currentValue}" class="edit-input">
+            <button onclick="saveEdit(${id}, '${storeName}', '${field}', this)">Simpan</button>
+            <button onclick="cancelEdit(this)">Batal</button>
+          `;
+          
+          // Replace cell content with edit form
+          this.innerHTML = '';
+          this.appendChild(editForm);
+          this.querySelector('.edit-input').focus();
+        });
+      });
+    }
+
+    // Save edit
+    function saveEdit(id, storeName, field, button) {
+      const newValue = button.closest('.edit-form').querySelector('.edit-input').value;
+      const tx = db.transaction([storeName, "history"], "readwrite");
+      const store = tx.objectStore(storeName);
+      const historyStore = tx.objectStore("history");
+      
+      store.get(id).onsuccess = function(e) {
+        const item = e.target.result;
+        if (item) {
+          const oldValue = item[field];
+          item[field] = field === 'amount' ? parseInt(newValue) : newValue;
+          
+          // Update in database
+          store.put(item).onsuccess = function() {
+            // Add to history
+            historyStore.add({
+              locationId: id,
+              action: `edited_${field}`,
+              timestamp: new Date().toISOString(),
+              data: { old: oldValue, new: newValue }
+            });
+            
+            // Refresh display
+            if (storeName === 'lokasi') {
+              displayData();
+            } else {
+              displayCompletedData();
+            }
+          };
+        }
+      };
+    }
+
+    // Cancel edit
+    function cancelEdit(button) {
+      const cell = button.closest('.editable');
+      const originalContent = cell.dataset.originalContent || cell.textContent;
+      cell.innerHTML = originalContent;
+    }
+
+    // Edit row (full form)
+    function editRow(id, storeName) {
+      const tx = db.transaction(storeName, "readwrite");
+      const store = tx.objectStore(storeName);
+      
+      store.get(id).onsuccess = function(e) {
+        const item = e.target.result;
+        if (item) {
+          // Create edit modal
+          const modal = document.createElement('div');
+          modal.style.position = 'fixed';
+          modal.style.top = '0';
+          modal.style.left = '0';
+          modal.style.right = '0';
+          modal.style.bottom = '0';
+          modal.style.backgroundColor = 'rgba(0,0,0,0.5)';
+          modal.style.display = 'flex';
+          modal.style.justifyContent = 'center';
+          modal.style.alignItems = 'center';
+          modal.style.zIndex = '1000';
+          
+          modal.innerHTML = `
+            <div style="background: white; padding: 20px; border-radius: 5px; width: 80%; max-width: 500px;">
+              <h3>Edit Data</h3>
+              <div class="form-group">
+                <label>Koordinat:</label>
+                <input type="text" id="edit-coords" value="${item.coords}">
+              </div>
+              <div class="form-group">
+                <label>Keterangan:</label>
+                <input type="text" id="edit-desc" value="${item.desc}">
+              </div>
+              <div class="form-group">
+                <label>Jumlah:</label>
+                <input type="number" id="edit-amount" value="${item.amount}">
+              </div>
+              <div style="display: flex; gap: 10px; margin-top: 15px;">
+                <button onclick="saveFullEdit(${id}, '${storeName}', this)">Simpan</button>
+                <button onclick="this.closest('div').remove()">Batal</button>
+              </div>
+            </div>
+          `;
+          
+          document.body.appendChild(modal);
+        }
+      };
+    }
+
+    // Save full edit
+    function saveFullEdit(id, storeName, button) {
+      const modal = button.closest('div').parentNode.parentNode;
+      const coords = modal.querySelector('#edit-coords').value;
+      const desc = modal.querySelector('#edit-desc').value;
+      const amount = parseInt(modal.querySelector('#edit-amount').value);
+      
+      if (!coords || !desc || isNaN(amount)) {
+        alert('Lengkapi semua data!');
+        return;
+      }
+      
+      const tx = db.transaction([storeName, "history"], "readwrite");
+      const store = tx.objectStore(storeName);
+      const historyStore = tx.objectStore("history");
+      
+      store.get(id).onsuccess = function(e) {
+        const item = e.target.result;
+        if (item) {
+          const oldData = {...item};
+          item.coords = coords;
+          item.desc = desc;
+          item.amount = amount;
+          
+          // Update in database
+          store.put(item).onsuccess = function() {
+            // Add to history
+            historyStore.add({
+              locationId: id,
+              action: 'full_edit',
+              timestamp: new Date().toISOString(),
+              data: { old: oldData, new: item }
+            });
+            
+            // Remove modal
+            modal.remove();
+            
+            // Refresh display
+            if (storeName === 'lokasi') {
+              displayData();
+            } else {
+              displayCompletedData();
+            }
+          };
+        }
+      };
     }
 
     // Tab functionality
@@ -520,7 +735,35 @@
         let html = "<ul>";
         historyItems.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         historyItems.forEach(item => {
-          html += `<li>${item.action} - ${new Date(item.timestamp).toLocaleString()}</li>`;
+          const actionMap = {
+            'created': 'Dibuat',
+            'completed': 'Diselesaikan',
+            'restored': 'Dikembalikan',
+            'edited_coords': 'Edit Koordinat',
+            'edited_desc': 'Edit Keterangan',
+            'edited_amount': 'Edit Jumlah',
+            'full_edit': 'Edit Lengkap'
+          };
+          
+          const actionText = actionMap[item.action] || item.action;
+          const time = new Date(item.timestamp).toLocaleString();
+          
+          html += `<li><strong>${actionText}</strong> - ${time}`;
+          
+          if (item.action === 'full_edit') {
+            html += `<div style="margin-left: 15px; font-size: 0.9em;">
+              <p><strong>Perubahan:</strong></p>
+              <p>Koordinat: ${item.data.old.coords} → ${item.data.new.coords}</p>
+              <p>Keterangan: ${item.data.old.desc} → ${item.data.new.desc}</p>
+              <p>Jumlah: ${item.data.old.amount} → ${item.data.new.amount}</p>
+            </div>`;
+          } else if (item.action.startsWith('edited_')) {
+            html += `<div style="margin-left: 15px; font-size: 0.9em;">
+              ${item.data.old} → ${item.data.new}
+            </div>`;
+          }
+          
+          html += "</li>";
         });
         html += "</ul>";
         historyDiv.innerHTML = html;
