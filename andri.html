@@ -19,7 +19,6 @@
   <button onclick="saveJudul()">Simpan Judul</button><br/>
 
   <!-- Form input -->
-  <button onclick="getLocation()">Rekam Koordinat</button><br/>
   <textarea id="keterangan" placeholder="Keterangan"></textarea><br/>
   <input id="jumlah" type="number" placeholder="Jumlah" /><br/>
   <button onclick="saveData()">Simpan Data</button>
@@ -54,7 +53,6 @@
     let latNow = 0, lonNow = 0;
     let savedJudul = "";
 
-    // IndexedDB setup
     const request = indexedDB.open("SalesDB", 1);
     request.onupgradeneeded = e => {
       db = e.target.result;
@@ -62,7 +60,14 @@
     };
     request.onsuccess = e => {
       db = e.target.result;
-      getLocation();
+
+      // Live tracking posisi
+      navigator.geolocation.watchPosition(pos => {
+        latNow = pos.coords.latitude;
+        lonNow = pos.coords.longitude;
+        console.log(`Lokasi update: ${latNow}, ${lonNow}`);
+      }, err => alert("Gagal pantau posisi: " + err.message));
+
       loadData();
       setInterval(loadData, 5000);
     };
@@ -71,26 +76,17 @@
       const judul = document.getElementById('judul').value.trim();
       if (judul) {
         savedJudul = judul;
-        alert("Judul disimpan! Jangan diubah ya, Inul 😉");
+        alert("Judul disimpan! Jangan diubah-ubah ya Inul 😊");
       } else {
-        alert("Judul tidak boleh kosong!");
+        alert("Judul wajib diisi!");
       }
     }
 
-    function getLocation() {
-      navigator.geolocation.getCurrentPosition(pos => {
-        latNow = pos.coords.latitude;
-        lonNow = pos.coords.longitude;
-        console.log(`Koordinat sekarang: ${latNow.toFixed(5)}, ${lonNow.toFixed(5)}`);
-        alert(`Koordinat: ${latNow.toFixed(5)}, ${lonNow.toFixed(5)}`);
-      }, () => alert("Gagal dapat lokasi"));
-    }
-
     function saveData() {
-      if (!savedJudul) { alert("Judul wajib diisi!"); return; }
+      if (!savedJudul) { alert("Isi judul dulu!"); return; }
+      if (!latNow || !lonNow) { alert("Tunggu koordinat terdeteksi..."); return; }
       const ket = document.getElementById('keterangan').value.trim();
-      const jumlah = parseInt(document.getElementById('jumlah').value);
-      if (!latNow || !lonNow) { alert("Koordinat belum direkam!"); return; }
+      const jumlah = parseInt(document.getElementById('jumlah').value) || 0;
 
       const tx = db.transaction("sales", "readwrite");
       const store = tx.objectStore("sales");
@@ -99,7 +95,7 @@
         lat: latNow,
         lon: lonNow,
         keterangan: ket,
-        jumlah: jumlah || 0,
+        jumlah: jumlah,
         tanggal: new Date().toISOString(),
       });
       tx.oncomplete = () => {
@@ -123,7 +119,7 @@
         let judulSet = new Set();
         data.forEach(d => judulSet.add(d.judul));
 
-        // Buat Dropdown Judul
+        // Buat dropdown
         const sel = document.getElementById("filterJudul");
         sel.innerHTML = `<option value="">-- Semua Judul --</option>`;
         judulSet.forEach(j => {
@@ -183,7 +179,7 @@
     }
 
     function clearLaporan() {
-      if (confirm("Yakin hapus semua?") && confirm("Serius nih, hapus semua data?")) {
+      if (confirm("Yakin hapus semua?") && confirm("Serius nih? Ini nggak bisa dibatalin!")) {
         const tx = db.transaction("sales", "readwrite");
         tx.objectStore("sales").clear().onsuccess = () => loadData();
       }
