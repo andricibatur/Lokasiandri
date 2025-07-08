@@ -1,588 +1,242 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aplikasi Sales Tracking</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        input, textarea, select {
-            width: 100%;
-            padding: 8px;
-            box-sizing: border-box;
-        }
-        button {
-            padding: 8px 15px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            cursor: pointer;
-            margin-right: 10px;
-        }
-        button:hover {
-            background-color: #45a049;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #f2f2f2;
-        }
-        .action-buttons button {
-            padding: 3px 5px;
-            margin-right: 3px;
-        }
-        .edit-btn {
-            background-color: #2196F3;
-        }
-        .delete-btn {
-            background-color: #f44336;
-        }
-        .distance {
-            font-weight: bold;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <title>Sales Tracker</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    input, button, textarea { margin: 5px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #aaa; padding: 5px; text-align: left; }
+  </style>
 </head>
 <body>
-    <h1>Aplikasi Sales Tracking</h1>
-    
-    <div class="form-group">
-        <label for="judul">Judul Toko:</label>
-        <input type="text" id="judul" required>
-    </div>
-    
-    <div class="form-group">
-        <label for="keterangan">Keterangan:</label>
-        <textarea id="keterangan" rows="3"></textarea>
-    </div>
-    
-    <div class="form-group">
-        <label for="jumlah">Jumlah:</label>
-        <input type="number" id="jumlah" min="0">
-    </div>
-    
-    <div class="form-group">
-        <button id="getLocationBtn">Rekam Koordinat</button>
-        <span id="locationStatus">Koordinat belum direkam</span>
-    </div>
-    
-    <div class="form-group">
-        <button id="saveBtn">Simpan</button>
-        <button id="clearBtn">Clear Laporan</button>
-        <button id="exportBtn">Export JSON</button>
-        <button id="importBtn">Import JSON</button>
-        <button id="exportCsvBtn">Export CSV</button>
-        <button id="importCsvBtn">Import CSV</button>
-        <input type="file" id="fileInput" style="display: none;">
-    </div>
-    
-    <div class="form-group">
-        <label for="filterJudul">Filter berdasarkan Judul:</label>
-        <select id="filterJudul">
-            <option value="">Semua</option>
-        </select>
-    </div>
-    
-    <table id="salesTable">
-        <thead>
-            <tr>
-                <th>Judul</th>
-                <th>Koordinat</th>
-                <th>Keterangan</th>
-                <th>Jumlah</th>
-                <th>Tanggal</th>
-                <th>Jarak (m)</th>
-                <th>Aksi</th>
-            </tr>
-        </thead>
-        <tbody id="salesTableBody">
-            <!-- Data akan dimuat di sini -->
-        </tbody>
-    </table>
+  <h1>Sales Tracker</h1>
 
-    <script>
-        // Variabel global
-        let currentLocation = null;
-        let db;
-        let currentEditingId = null;
-        
-        // Inisialisasi database saat halaman dimuat
-        document.addEventListener('DOMContentLoaded', function() {
-            initDB();
-            loadSalesData();
-            
-            // Set tanggal otomatis
-            document.getElementById('tanggal').valueAsDate = new Date();
+  <!-- Judul -->
+  <label>Judul Toko: </label>
+  <input id="judul" placeholder="Isi hanya sekali" /><button onclick="saveJudul()">Simpan Judul</button><br/>
+
+  <!-- Form input -->
+  <button onclick="getLocation()">Rekam Koordinat</button><br/>
+  <textarea id="keterangan" placeholder="Keterangan"></textarea><br/>
+  <input id="jumlah" type="number" placeholder="Jumlah" /><br/>
+  <button onclick="saveData()">Simpan Data</button>
+
+  <!-- Export Import -->
+  <br/>
+  <button onclick="exportJSON()">Export JSON</button>
+  <button onclick="importJSON()">Import JSON</button>
+  <button onclick="importCSV()">Import CSV</button>
+  <input type="file" id="csvFile" accept=".csv" style="display:none" onchange="handleCSV(this)">
+
+  <!-- Clear Laporan -->
+  <br/>
+  <button onclick="clearLaporan()">Clear Laporan</button>
+
+  <!-- Laporan -->
+  <h3>Laporan</h3>
+  <div>
+    <label>Filter Judul: </label>
+    <input id="filterJudul" placeholder="Masukkan judul" />
+    <button onclick="filterJudul()">Terapkan</button>
+  </div>
+  <table id="laporan">
+    <thead>
+      <tr><th>Judul</th><th>Koordinat</th><th>Jarak (m)</th><th>Keterangan</th><th>Jumlah</th><th>Tanggal</th><th>Aksi</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    let db;
+    let lat = 0, lon = 0;
+    let savedJudul = "";
+
+    // IndexedDB setup
+    const request = indexedDB.open("SalesDB", 1);
+    request.onupgradeneeded = e => {
+      db = e.target.result;
+      db.createObjectStore("sales", { keyPath: "id", autoIncrement: true });
+    };
+    request.onsuccess = e => {
+      db = e.target.result;
+      loadData();
+      setInterval(updateDistance, 5000); // Update jarak tiap 5 detik
+    };
+
+    function saveJudul() {
+      const judul = document.getElementById('judul').value.trim();
+      if (judul) {
+        savedJudul = judul;
+        alert("Judul disimpan! Jangan diubah-ubah ya...");
+      }
+    }
+
+    function getLocation() {
+      navigator.geolocation.getCurrentPosition(pos => {
+        lat = pos.coords.latitude;
+        lon = pos.coords.longitude;
+        alert(`Koordinat: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+      }, () => alert("Gagal dapat lokasi"));
+    }
+
+    function saveData() {
+      if (!savedJudul) { alert("Judul wajib diisi!"); return; }
+      const tx = db.transaction("sales", "readwrite");
+      const store = tx.objectStore("sales");
+      store.add({
+        judul: savedJudul,
+        lat: lat,
+        lon: lon,
+        keterangan: document.getElementById('keterangan').value,
+        jumlah: parseInt(document.getElementById('jumlah').value),
+        tanggal: new Date().toISOString(),
+      });
+      tx.oncomplete = () => loadData();
+    }
+
+    function loadData(filter = "") {
+      const tbody = document.querySelector("#laporan tbody");
+      tbody.innerHTML = "";
+      const tx = db.transaction("sales", "readonly");
+      const store = tx.objectStore("sales");
+      store.getAll().onsuccess = e => {
+        const data = e.target.result;
+        navigator.geolocation.getCurrentPosition(pos => {
+          const nowLat = pos.coords.latitude;
+          const nowLon = pos.coords.longitude;
+          data.forEach(d => {
+            d.jarak = getDistance(nowLat, nowLon, d.lat, d.lon);
+          });
+          data.sort((a,b) => a.jarak - b.jarak);
+          data.filter(d => !filter || d.judul === filter).forEach(d => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>${d.judul}</td>
+              <td>${d.lat.toFixed(5)}, ${d.lon.toFixed(5)}</td>
+              <td>${d.jarak.toFixed(1)}</td>
+              <td>${d.keterangan}</td>
+              <td>${d.jumlah}</td>
+              <td>${d.tanggal.split('T')[0]}</td>
+              <td>
+                <button onclick="editData(${d.id})">Edit</button>
+                <button onclick="deleteData(${d.id})">Hapus</button>
+              </td>
+            `;
+            tbody.appendChild(tr);
+          });
         });
-        
-        // Inisialisasi IndexedDB
-        function initDB() {
-            const request = indexedDB.open('SalesDatabase', 1);
-            
-            request.onupgradeneeded = function(event) {
-                const db = event.target.result;
-                if (!db.objectStoreNames.contains('sales')) {
-                    const store = db.createObjectStore('sales', { keyPath: 'id', autoIncrement: true });
-                    store.createIndex('judul', 'judul', { unique: false });
-                    store.createIndex('tanggal', 'tanggal', { unique: false });
-                }
-            };
-            
-            request.onsuccess = function(event) {
-                db = event.target.result;
-                console.log('Database berhasil dibuka');
-                updateJudulFilter(); // Pindahkan ke sini untuk memastikan db sudah siap
-            };
-            
-            request.onerror = function(event) {
-                console.error('Database error:', event.target.error);
-            };
-        }
-        
-        // Mendapatkan lokasi saat ini
-        document.getElementById('getLocationBtn').addEventListener('click', function() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    function(position) {
-                        currentLocation = {
-                            latitude: position.coords.latitude,
-                            longitude: position.coords.longitude
-                        };
-                        document.getElementById('locationStatus').textContent = 
-                            `Koordinat: ${currentLocation.latitude.toFixed(6)}, ${currentLocation.longitude.toFixed(6)}`;
-                        loadSalesData(document.getElementById('filterJudul').value); // Reload data untuk update jarak
-                    },
-                    function(error) {
-                        console.error('Error getting location:', error);
-                        document.getElementById('locationStatus').textContent = 'Gagal mendapatkan lokasi';
-                    }
-                );
-            } else {
-                alert('Geolocation tidak didukung di browser ini');
-            }
-        });
-        
-        // Menyimpan data sales
-        document.getElementById('saveBtn').addEventListener('click', function() {
-            const judul = document.getElementById('judul').value.trim();
-            const keterangan = document.getElementById('keterangan').value.trim();
-            const jumlah = parseInt(document.getElementById('jumlah').value) || 0;
-            
-            if (!judul) {
-                alert('Judul toko harus diisi');
-                return;
-            }
-            
-            if (!currentLocation) {
-                alert('Silahkan rekam koordinat terlebih dahulu');
-                return;
-            }
-            
-            const salesData = {
-                judul: judul,
-                latitude: currentLocation.latitude,
-                longitude: currentLocation.longitude,
-                keterangan: keterangan,
-                jumlah: jumlah,
-                tanggal: new Date().toISOString()
-            };
-            
-            const transaction = db.transaction(['sales'], 'readwrite');
-            const store = transaction.objectStore('sales');
-            
-            let request;
-            if (currentEditingId) {
-                salesData.id = currentEditingId;
-                request = store.put(salesData);
-            } else {
-                request = store.add(salesData);
-            }
-            
-            request.onsuccess = function() {
-                loadSalesData(document.getElementById('filterJudul').value);
-                resetForm(false); // Tidak reset judul
-                updateJudulFilter();
-                currentEditingId = null;
-            };
-            
-            request.onerror = function(event) {
-                console.error('Error saving data:', event.target.error);
-            };
-        });
-        
-        // Memuat data sales dari database
-        function loadSalesData(filterJudul = '') {
-            const transaction = db.transaction(['sales'], 'readonly');
-            const store = transaction.objectStore('sales');
-            const request = store.getAll();
-            
-            request.onsuccess = function() {
-                let salesData = request.result;
-                
-                // Filter berdasarkan judul jika ada filter
-                if (filterJudul) {
-                    salesData = salesData.filter(item => item.judul === filterJudul);
-                }
-                
-                // Hitung jarak untuk setiap entri
-                if (currentLocation) {
-                    salesData.forEach(item => {
-                        item.distance = calculateDistance(
-                            currentLocation.latitude, 
-                            currentLocation.longitude,
-                            item.latitude,
-                            item.longitude
-                        );
-                    });
-                    
-                    // Urutkan berdasarkan jarak terdekat
-                    salesData.sort((a, b) => (a.distance || 0) - (b.distance || 0));
-                }
-                
-                renderSalesTable(salesData);
-            };
-        }
-        
-        // Render tabel sales
-        function renderSalesTable(data) {
-            const tableBody = document.getElementById('salesTableBody');
-            tableBody.innerHTML = '';
-            
-            if (data.length === 0) {
-                const row = document.createElement('tr');
-                row.innerHTML = '<td colspan="7" style="text-align: center;">Tidak ada data</td>';
-                tableBody.appendChild(row);
-                return;
-            }
-            
-            data.forEach(item => {
-                const row = document.createElement('tr');
-                
-                const date = new Date(item.tanggal);
-                const formattedDate = date.toLocaleDateString('id-ID') + ' ' + date.toLocaleTimeString('id-ID');
-                
-                row.innerHTML = `
-                    <td>${item.judul}</td>
-                    <td>${item.latitude.toFixed(6)}, ${item.longitude.toFixed(6)}</td>
-                    <td>${item.keterangan}</td>
-                    <td>${item.jumlah}</td>
-                    <td>${formattedDate}</td>
-                    <td class="distance">${item.distance ? item.distance.toFixed(2) + ' m' : '-'}</td>
-                    <td class="action-buttons">
-                        <button class="edit-btn" data-id="${item.id}">Edit</button>
-                        <button class="delete-btn" data-id="${item.id}">Hapus</button>
-                    </td>
-                `;
-                
-                tableBody.appendChild(row);
+      };
+    }
+
+    function updateDistance() { loadData(document.getElementById('filterJudul').value); }
+
+    function getDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371e3; // meter
+      const φ1 = lat1 * Math.PI/180, φ2 = lat2 * Math.PI/180;
+      const Δφ = (lat2-lat1) * Math.PI/180;
+      const Δλ = (lon2-lon1) * Math.PI/180;
+      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ/2) * Math.sin(Δλ/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    function editData(id) {
+      if (confirm("Edit data ini?")) {
+        const tx = db.transaction("sales", "readwrite");
+        const store = tx.objectStore("sales");
+        store.get(id).onsuccess = e => {
+          const d = e.target.result;
+          const ket = prompt("Keterangan:", d.keterangan);
+          const jumlah = prompt("Jumlah:", d.jumlah);
+          if (ket !== null && jumlah !== null) {
+            d.keterangan = ket;
+            d.jumlah = parseInt(jumlah);
+            store.put(d).onsuccess = () => loadData();
+          }
+        };
+      }
+    }
+
+    function deleteData(id) {
+      if (confirm("Hapus data ini?")) {
+        const tx = db.transaction("sales", "readwrite");
+        tx.objectStore("sales").delete(id).onsuccess = () => loadData();
+      }
+    }
+
+    function clearLaporan() {
+      if (confirm("Yakin hapus semua?") && confirm("Ini serius, hapus semua?")) {
+        const tx = db.transaction("sales", "readwrite");
+        tx.objectStore("sales").clear().onsuccess = () => loadData();
+      }
+    }
+
+    function filterJudul() {
+      const f = document.getElementById('filterJudul').value;
+      loadData(f);
+    }
+
+    function exportJSON() {
+      const tx = db.transaction("sales", "readonly");
+      tx.objectStore("sales").getAll().onsuccess = e => {
+        const blob = new Blob([JSON.stringify(e.target.result)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = "sales.json"; a.click();
+      };
+    }
+
+    function importJSON() {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".json";
+      input.onchange = e => {
+        const file = e.target.files[0];
+        const reader = new FileReader();
+        reader.onload = () => {
+          const data = JSON.parse(reader.result);
+          const tx = db.transaction("sales", "readwrite");
+          const store = tx.objectStore("sales");
+          data.forEach(d => { delete d.id; store.add(d); });
+          tx.oncomplete = () => loadData();
+        };
+        reader.readAsText(file);
+      };
+      input.click();
+    }
+
+    function importCSV() {
+      document.getElementById('csvFile').click();
+    }
+
+    function handleCSV(input) {
+      const file = input.files[0];
+      const reader = new FileReader();
+      reader.onload = () => {
+        const lines = reader.result.split("\n");
+        const tx = db.transaction("sales", "readwrite");
+        const store = tx.objectStore("sales");
+        lines.forEach(line => {
+          const [lat, lon, keterangan, jumlah] = line.split(",");
+          if (lat && lon) {
+            store.add({
+              judul: savedJudul,
+              lat: parseFloat(lat),
+              lon: parseFloat(lon),
+              keterangan: keterangan || "",
+              jumlah: parseInt(jumlah) || 0,
+              tanggal: new Date().toISOString()
             });
-            
-            // Tambahkan event listener untuk tombol edit
-            document.querySelectorAll('.edit-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    editSalesData(parseInt(this.getAttribute('data-id')));
-                });
-            });
-            
-            // Tambahkan event listener untuk tombol hapus
-            document.querySelectorAll('.delete-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    if (confirm('Apakah Anda yakin ingin menghapus data ini?')) {
-                        deleteSalesData(parseInt(this.getAttribute('data-id')));
-                    }
-                });
-            });
-        }
-        
-        // Edit data sales
-        function editSalesData(id) {
-            const transaction = db.transaction(['sales'], 'readonly');
-            const store = transaction.objectStore('sales');
-            const request = store.get(id);
-            
-            request.onsuccess = function() {
-                const data = request.result;
-                if (data) {
-                    document.getElementById('judul').value = data.judul;
-                    document.getElementById('keterangan').value = data.keterangan;
-                    document.getElementById('jumlah').value = data.jumlah;
-                    
-                    currentLocation = {
-                        latitude: data.latitude,
-                        longitude: data.longitude
-                    };
-                    document.getElementById('locationStatus').textContent = 
-                        `Koordinat: ${data.latitude.toFixed(6)}, ${data.longitude.toFixed(6)}`;
-                    
-                    currentEditingId = id;
-                    document.getElementById('saveBtn').textContent = 'Update';
-                }
-            };
-        }
-        
-        // Hapus data sales
-        function deleteSalesData(id) {
-            const transaction = db.transaction(['sales'], 'readwrite');
-            const store = transaction.objectStore('sales');
-            const request = store.delete(id);
-            
-            request.onsuccess = function() {
-                loadSalesData(document.getElementById('filterJudul').value);
-                updateJudulFilter();
-            };
-        }
-        
-        // Reset form (dengan parameter untuk menentukan apakah judul direset)
-        function resetForm(resetJudul = true) {
-            if (resetJudul) {
-                document.getElementById('judul').value = '';
-            }
-            document.getElementById('keterangan').value = '';
-            document.getElementById('jumlah').value = '';
-            document.getElementById('locationStatus').textContent = 'Koordinat belum direkam';
-            document.getElementById('saveBtn').textContent = 'Simpan';
-            currentLocation = null;
-            currentEditingId = null;
-        }
-        
-        // Clear semua data
-        document.getElementById('clearBtn').addEventListener('click', function() {
-            if (confirm('Apakah Anda yakin ingin menghapus SEMUA data?')) {
-                if (confirm('Ini akan menghapus semua data secara permanen. Lanjutkan?')) {
-                    const transaction = db.transaction(['sales'], 'readwrite');
-                    const store = transaction.objectStore('sales');
-                    const request = store.clear();
-                    
-                    request.onsuccess = function() {
-                        loadSalesData();
-                        updateJudulFilter();
-                    };
-                }
-            }
+          }
         });
-        
-        // Export data ke JSON
-        document.getElementById('exportBtn').addEventListener('click', function() {
-            const transaction = db.transaction(['sales'], 'readonly');
-            const store = transaction.objectStore('sales');
-            const request = store.getAll();
-            
-            request.onsuccess = function() {
-                const data = request.result;
-                const dataStr = JSON.stringify(data, null, 2);
-                const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-                
-                const exportFileDefaultName = 'sales-data.json';
-                
-                const linkElement = document.createElement('a');
-                linkElement.setAttribute('href', dataUri);
-                linkElement.setAttribute('download', exportFileDefaultName);
-                linkElement.click();
-            };
-        });
-        
-        // Import data dari JSON
-        document.getElementById('importBtn').addEventListener('click', function() {
-            document.getElementById('fileInput').accept = '.json';
-            document.getElementById('fileInput').onchange = function(e) {
-                const file = e.target.files[0];
-                if (!file) return;
-                
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    try {
-                        const data = JSON.parse(e.target.result);
-                        
-                        if (confirm(`Anda akan mengimpor ${data.length} data. Lanjutkan?`)) {
-                            const transaction = db.transaction(['sales'], 'readwrite');
-                            const store = transaction.objectStore('sales');
-                            
-                            data.forEach(item => {
-                                // Pastikan tidak ada ID untuk menghindari konflik
-                                delete item.id;
-                                store.add(item);
-                            });
-                            
-                            transaction.oncomplete = function() {
-                                alert('Data berhasil diimpor');
-                                loadSalesData();
-                                updateJudulFilter();
-                            };
-                            
-                            transaction.onerror = function(event) {
-                                console.error('Import error:', event.target.error);
-                                alert('Terjadi kesalahan saat mengimpor data');
-                            };
-                        }
-                    } catch (error) {
-                        console.error('Error parsing JSON:', error);
-                        alert('File JSON tidak valid');
-                    }
-                };
-                reader.readAsText(file);
-            };
-            document.getElementById('fileInput').click();
-        });
-        
-        // Export data ke CSV
-        document.getElementById('exportCsvBtn').addEventListener('click', function() {
-            const transaction = db.transaction(['sales'], 'readonly');
-            const store = transaction.objectStore('sales');
-            const request = store.getAll();
-            
-            request.onsuccess = function() {
-                const data = request.result;
-                let csv = 'latitude,longitude,keterangan,jumlah\n';
-                
-                data.forEach(item => {
-                    csv += `${item.latitude},${item.longitude},"${item.keterangan}",${item.jumlah}\n`;
-                });
-                
-                const dataUri = 'data:text/csv;charset=utf-8,'+ encodeURIComponent(csv);
-                const exportFileDefaultName = 'sales-data.csv';
-                
-                const linkElement = document.createElement('a');
-                linkElement.setAttribute('href', dataUri);
-                linkElement.setAttribute('download', exportFileDefaultName);
-                linkElement.click();
-            };
-        });
-        
-        // Import data dari CSV
-        document.getElementById('importCsvBtn').addEventListener('click', function() {
-            document.getElementById('fileInput').accept = '.csv';
-            document.getElementById('fileInput').onchange = function(e) {
-                const file = e.target.files[0];
-                if (!file) return;
-                
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    try {
-                        const csvData = e.target.result;
-                        const lines = csvData.split('\n');
-                        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-                        
-                        // Pastikan format CSV sesuai
-                        if (!headers.includes('latitude') || !headers.includes('longitude') || 
-                            !headers.includes('keterangan') || !headers.includes('jumlah')) {
-                            throw new Error('Format CSV tidak valid');
-                        }
-                        
-                        const data = [];
-                        for (let i = 1; i < lines.length; i++) {
-                            if (lines[i].trim() === '') continue;
-                            
-                            const values = lines[i].split(',');
-                            const item = {
-                                latitude: parseFloat(values[headers.indexOf('latitude')]),
-                                longitude: parseFloat(values[headers.indexOf('longitude')]),
-                                keterangan: values[headers.indexOf('keterangan')].replace(/"/g, ''),
-                                jumlah: parseInt(values[headers.indexOf('jumlah')]),
-                                judul: 'Imported', // Default judul untuk data impor
-                                tanggal: new Date().toISOString()
-                            };
-                            
-                            data.push(item);
-                        }
-                        
-                        if (confirm(`Anda akan mengimpor ${data.length} data dari CSV. Lanjutkan?`)) {
-                            const transaction = db.transaction(['sales'], 'readwrite');
-                            const store = transaction.objectStore('sales');
-                            
-                            data.forEach(item => {
-                                store.add(item);
-                            });
-                            
-                            transaction.oncomplete = function() {
-                                alert('Data CSV berhasil diimpor');
-                                loadSalesData();
-                                updateJudulFilter();
-                            };
-                            
-                            transaction.onerror = function(event) {
-                                console.error('CSV import error:', event.target.error);
-                                alert('Terjadi kesalahan saat mengimpor data CSV');
-                            };
-                        }
-                    } catch (error) {
-                        console.error('Error processing CSV:', error);
-                        alert('File CSV tidak valid: ' + error.message);
-                    }
-                };
-                reader.readAsText(file);
-            };
-            document.getElementById('fileInput').click();
-        });
-        
-        // Update filter judul
-        function updateJudulFilter() {
-            const transaction = db.transaction(['sales'], 'readonly');
-            const store = transaction.objectStore('sales');
-            const request = store.getAll();
-            
-            request.onsuccess = function() {
-                const data = request.result;
-                const judulSelect = document.getElementById('filterJudul');
-                const currentJudul = judulSelect.value;
-                judulSelect.innerHTML = '<option value="">Semua</option>';
-                
-                // Ambil semua judul unik
-                const uniqueJuduls = [...new Set(data.map(item => item.judul))];
-                
-                uniqueJuduls.forEach(judul => {
-                    const option = document.createElement('option');
-                    option.value = judul;
-                    option.textContent = judul;
-                    judulSelect.appendChild(option);
-                });
-                
-                // Kembalikan filter yang dipilih sebelumnya
-                if (currentJudul && uniqueJuduls.includes(currentJudul)) {
-                    judulSelect.value = currentJudul;
-                }
-            };
-        }
-        
-        // Filter berdasarkan judul
-        document.getElementById('filterJudul').addEventListener('change', function() {
-            loadSalesData(this.value);
-        });
-        
-        // Hitung jarak antara dua koordinat (dalam meter)
-        function calculateDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371e3; // Radius bumi dalam meter
-            const φ1 = lat1 * Math.PI / 180;
-            const φ2 = lat2 * Math.PI / 180;
-            const Δφ = (lat2 - lat1) * Math.PI / 180;
-            const Δλ = (lon2 - lon1) * Math.PI / 180;
-            
-            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                      Math.cos(φ1) * Math.cos(φ2) *
-                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            
-            return R * c;
-        }
-    </script>
+        tx.oncomplete = () => loadData();
+      };
+      reader.readAsText(file);
+    }
+  </script>
 </body>
 </html>
