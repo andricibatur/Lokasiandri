@@ -130,7 +130,6 @@
         document.addEventListener('DOMContentLoaded', function() {
             initDB();
             loadSalesData();
-            updateJudulFilter();
             
             // Set tanggal otomatis
             document.getElementById('tanggal').valueAsDate = new Date();
@@ -152,6 +151,7 @@
             request.onsuccess = function(event) {
                 db = event.target.result;
                 console.log('Database berhasil dibuka');
+                updateJudulFilter(); // Pindahkan ke sini untuk memastikan db sudah siap
             };
             
             request.onerror = function(event) {
@@ -170,6 +170,7 @@
                         };
                         document.getElementById('locationStatus').textContent = 
                             `Koordinat: ${currentLocation.latitude.toFixed(6)}, ${currentLocation.longitude.toFixed(6)}`;
+                        loadSalesData(document.getElementById('filterJudul').value); // Reload data untuk update jarak
                     },
                     function(error) {
                         console.error('Error getting location:', error);
@@ -218,8 +219,8 @@
             }
             
             request.onsuccess = function() {
-                loadSalesData();
-                resetForm();
+                loadSalesData(document.getElementById('filterJudul').value);
+                resetForm(false); // Tidak reset judul
                 updateJudulFilter();
                 currentEditingId = null;
             };
@@ -255,7 +256,7 @@
                     });
                     
                     // Urutkan berdasarkan jarak terdekat
-                    salesData.sort((a, b) => a.distance - b.distance);
+                    salesData.sort((a, b) => (a.distance || 0) - (b.distance || 0));
                 }
                 
                 renderSalesTable(salesData);
@@ -346,14 +347,16 @@
             const request = store.delete(id);
             
             request.onsuccess = function() {
-                loadSalesData();
+                loadSalesData(document.getElementById('filterJudul').value);
                 updateJudulFilter();
             };
         }
         
-        // Reset form
-        function resetForm() {
-            document.getElementById('judul').value = '';
+        // Reset form (dengan parameter untuk menentukan apakah judul direset)
+        function resetForm(resetJudul = true) {
+            if (resetJudul) {
+                document.getElementById('judul').value = '';
+            }
             document.getElementById('keterangan').value = '';
             document.getElementById('jumlah').value = '';
             document.getElementById('locationStatus').textContent = 'Koordinat belum direkam';
@@ -535,15 +538,16 @@
         function updateJudulFilter() {
             const transaction = db.transaction(['sales'], 'readonly');
             const store = transaction.objectStore('sales');
-            const index = store.index('judul');
-            const request = index.getAllKeys();
+            const request = store.getAll();
             
             request.onsuccess = function() {
+                const data = request.result;
                 const judulSelect = document.getElementById('filterJudul');
                 const currentJudul = judulSelect.value;
                 judulSelect.innerHTML = '<option value="">Semua</option>';
                 
-                const uniqueJuduls = [...new Set(request.result)];
+                // Ambil semua judul unik
+                const uniqueJuduls = [...new Set(data.map(item => item.judul))];
                 
                 uniqueJuduls.forEach(judul => {
                     const option = document.createElement('option');
