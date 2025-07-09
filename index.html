@@ -2,279 +2,72 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Rekam Lokasi dengan Jarak</title>
   <style>
-    body { 
-      font-family: Arial, sans-serif; 
-      padding: 10px; 
-      max-width: 100%; 
-      overflow-x: hidden;
-    }
-    table { 
-      width: 100%; 
-      border-collapse: collapse; 
-      margin-top: 10px; 
-      font-size: 14px;
-    }
-    td, th { 
-      border: 1px solid #ccc; 
-      padding: 6px; 
-      text-align: left; 
-      word-break: break-word;
-    }
-    .status-indicator {
-      display: inline-block;
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      margin-right: 5px;
-    }
-    .status-close {
-      background-color: green;
-      animation: blinkGreen 1.5s infinite;
-    }
-    .status-medium {
-      background-color: orange;
-      animation: blinkOrange 1.5s infinite;
-    }
-    .status-far {
-      background-color: red;
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    td, th { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    .blink-red { animation: blinkRed 1s infinite; }
+    .blink-green { animation: blinkGreen 1s infinite; }
+    button { margin: 2px; }
+    @keyframes blinkRed {
+      0% { background: #fff; }
+      50% { background: red; color: #fff; }
+      100% { background: #fff; }
     }
     @keyframes blinkGreen {
-      0% { opacity: 1; }
-      50% { opacity: 0.3; }
-      100% { opacity: 1; }
-    }
-    @keyframes blinkOrange {
-      0% { opacity: 1; }
-      50% { opacity: 0.3; }
-      100% { opacity: 1; }
-    }
-    .completed { background-color: #f0f0f0; color: #888; }
-    .history { display: none; background-color: #f9f9f9; }
-    button {
-      padding: 8px 12px;
-      margin: 5px 0;
-      font-size: 14px;
-      border: 1px solid #ccc;
-      background-color: #f5f5f5;
-      border-radius: 4px;
-    }
-    input, select {
-      padding: 8px;
-      margin: 5px 0;
-      width: 100%;
-      box-sizing: border-box;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-    }
-    .form-group {
-      margin-bottom: 10px;
-    }
-    .tab {
-      overflow: hidden;
-      border: 1px solid #ccc;
-      background-color: #f1f1f1;
-      display: flex;
-      border-radius: 4px 4px 0 0;
-    }
-    .tab button {
-      flex: 1;
-      border: none;
-      outline: none;
-      cursor: pointer;
-      padding: 10px;
-      transition: 0.3s;
-      border-radius: 0;
-      margin: 0;
-    }
-    .tab button.active {
-      background-color: #ddd;
-    }
-    .tabcontent {
-      display: none;
-      padding: 6px;
-      border: 1px solid #ccc;
-      border-top: none;
-      border-radius: 0 0 4px 4px;
-    }
-    .tabcontent.active {
-      display: block;
-    }
-    .action-buttons {
-      display: flex;
-      gap: 5px;
-      margin-top: 10px;
-    }
-    .action-buttons button {
-      flex: 1;
-    }
-    .edit-form {
-      display: none;
-      background-color: #f9f9f9;
-      padding: 10px;
-      margin-top: 5px;
-      border-radius: 4px;
-    }
-    .editable {
-      cursor: pointer;
-      transition: background-color 0.2s;
-    }
-    .editable:hover {
-      background-color: #f0f0f0;
+      0% { background: #fff; }
+      50% { background: green; color: #fff; }
+      100% { background: #fff; }
     }
   </style>
 </head>
 <body>
   <h2>Rekam Lokasi</h2>
-  
-  <div class="tab">
-    <button class="tablinks active" onclick="openTab(event, 'inputTab')">Input</button>
-    <button class="tablinks" onclick="openTab(event, 'reportTab')">Laporan</button>
-    <button class="tablinks" onclick="openTab(event, 'completedTab')">Selesai</button>
-    <button class="tablinks" onclick="openTab(event, 'dataTab')">Data</button>
-  </div>
+  <label>Koordinat: </label>
+  <input type="text" id="coords" readonly>
+  <button id="getLocation">Rekam Lokasi</button><br><br>
+  <label>Keterangan: </label>
+  <input type="text" id="desc"><br><br>
+  <label>Jumlah: </label>
+  <input type="number" id="amount"><br><br>
+  <button id="save">Simpan</button>
+  <button id="clearAll">Hapus Semua</button>
 
-  <!-- Input Tab -->
-  <div id="inputTab" class="tabcontent active">
-    <div class="form-group">
-      <label>Koordinat: </label>
-      <div style="display: flex; gap: 5px;">
-        <input type="text" id="coords" readonly style="flex: 1;">
-        <button id="getLocation">Rekam</button>
-      </div>
-    </div>
-    <div class="form-group">
-      <label>Keterangan: </label>
-      <input type="text" id="desc">
-    </div>
-    <div class="form-group">
-      <label>Jumlah: </label>
-      <input type="number" id="amount">
-    </div>
-    <button id="save">Simpan</button>
-  </div>
-
-  <!-- Report Tab -->
-  <div id="reportTab" class="tabcontent">
-    <h3>Laporan Lokasi</h3>
-    <div class="action-buttons">
-      <button id="showHistory">Riwayat</button>
-      <button id="completeSelected">Tandai Selesai</button>
-    </div>
-    <table id="report">
-      <thead>
-        <tr>
-          <th width="30px"></th>
-          <th width="30px">Status</th>
-          <th>Koordinat</th>
-          <th>Keterangan</th>
-          <th>Jumlah</th>
-          <th>Jarak (m)</th>
-          <th>Aksi</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
-
-  <!-- Completed Tab -->
-  <div id="completedTab" class="tabcontent">
-    <h3>Laporan Selesai</h3>
-    <div class="action-buttons">
-      <button id="restoreSelected">Kembalikan</button>
-    </div>
-    <table id="completedReport">
-      <thead>
-        <tr>
-          <th width="30px"></th>
-          <th width="30px">Status</th>
-          <th>Koordinat</th>
-          <th>Keterangan</th>
-          <th>Jumlah</th>
-          <th>Jarak (m)</th>
-          <th>Aksi</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
-
-  <!-- Data Tab -->
-  <div id="dataTab" class="tabcontent">
-    <h3>Kelola Data</h3>
-    <div class="form-group">
-      <label>Nama File:</label>
-      <input type="text" id="fileName" placeholder="nama_file_tanpa_ekstensi">
-    </div>
-    <div class="action-buttons">
-      <button id="exportData">Export Data</button>
-      <button id="importData">Import Data</button>
-    </div>
-    <input type="file" id="fileInput" style="display: none;" accept=".json">
-  </div>
+  <h3>Laporan Lokasi</h3>
+  <table id="report">
+    <thead>
+      <tr>
+        <th>Koordinat</th>
+        <th>Keterangan</th>
+        <th>Jumlah</th>
+        <th>Sisa Jarak (m)</th>
+        <th>Opsi</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
   <script>
     let db;
-    let showHistory = false;
-    const request = indexedDB.open("lokasiDB", 3);
-    
+    const request = indexedDB.open("lokasiDB", 1);
     request.onerror = e => console.error(e.target.error);
-    
     request.onupgradeneeded = e => {
       db = e.target.result;
-      if (!db.objectStoreNames.contains("lokasi")) {
-        db.createObjectStore("lokasi", { keyPath: "id", autoIncrement: true });
-      }
-      if (!db.objectStoreNames.contains("completed")) {
-        db.createObjectStore("completed", { keyPath: "id", autoIncrement: true });
-      }
-      if (!db.objectStoreNames.contains("history")) {
-        const historyStore = db.createObjectStore("history", { keyPath: "id", autoIncrement: true });
-        historyStore.createIndex("locationId", "locationId", { unique: false });
-      }
+      db.createObjectStore("lokasi", { keyPath: "id", autoIncrement: true });
     };
-    
     request.onsuccess = e => {
       db = e.target.result;
       displayData();
-      displayCompletedData();
       trackPosition();
-      
-      // Migrasi data jika diperlukan
-      migrateDataIfNeeded();
     };
-
-    function migrateDataIfNeeded() {
-      const tx = db.transaction(["lokasi"], "readonly");
-      const store = tx.objectStore("lokasi");
-      store.getAll().onsuccess = function(e) {
-        const allData = e.target.result;
-        if (allData && allData.length > 0 && !allData[0].hasOwnProperty('completed')) {
-          const migrateTx = db.transaction(["lokasi", "completed", "history"], "readwrite");
-          const lokasiStore = migrateTx.objectStore("lokasi");
-          const completedStore = migrateTx.objectStore("completed");
-          const historyStore = migrateTx.objectStore("history");
-          
-          allData.forEach(item => {
-            if (item.completed) {
-              const newItem = {...item};
-              delete newItem.id;
-              completedStore.add(newItem);
-              lokasiStore.delete(item.id);
-            }
-          });
-        }
-      };
-    }
 
     document.getElementById("getLocation").onclick = () => {
       navigator.geolocation.getCurrentPosition(pos => {
         const lat = pos.coords.latitude.toFixed(6);
         const lon = pos.coords.longitude.toFixed(6);
         document.getElementById("coords").value = `${lat},${lon}`;
-      }, null, { enableHighAccuracy: true });
+      });
     };
 
     document.getElementById("save").onclick = () => {
@@ -285,31 +78,8 @@
         alert("Lengkapi semua data!");
         return;
       }
-      
-      const tx = db.transaction(["lokasi", "history"], "readwrite");
-      const lokasiStore = tx.objectStore("lokasi");
-      const historyStore = tx.objectStore("history");
-      
-      const newItem = { 
-        coords, 
-        desc, 
-        amount,
-        timestamp: new Date().toISOString(),
-        completed: false
-      };
-      
-      const request = lokasiStore.add(newItem);
-      
-      request.onsuccess = function(e) {
-        const locationId = e.target.result;
-        historyStore.add({
-          locationId,
-          action: "created",
-          timestamp: new Date().toISOString(),
-          data: newItem
-        });
-      };
-      
+      const tx = db.transaction("lokasi", "readwrite");
+      tx.objectStore("lokasi").add({ coords, desc, amount });
       tx.oncomplete = () => {
         displayData();
         document.getElementById("coords").value = '';
@@ -318,14 +88,14 @@
       };
     };
 
+    document.getElementById("clearAll").onclick = () => {
+      const tx = db.transaction("lokasi", "readwrite");
+      tx.objectStore("lokasi").clear();
+      tx.oncomplete = () => displayData();
+    };
+
     function displayData(rows = []) {
       const tbody = document.querySelector("#report tbody");
-      tbody.innerHTML = "";
-      rows.forEach(row => tbody.appendChild(row));
-    }
-
-    function displayCompletedData(rows = []) {
-      const tbody = document.querySelector("#completedReport tbody");
       tbody.innerHTML = "";
       rows.forEach(row => tbody.appendChild(row));
     }
@@ -342,543 +112,47 @@
       return R * c;
     }
 
+    function deleteRow(id) {
+      const tx = db.transaction("lokasi", "readwrite");
+      tx.objectStore("lokasi").delete(id);
+      tx.oncomplete = () => displayData();
+    }
+
     function trackPosition() {
       navigator.geolocation.watchPosition(pos => {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
-        
-        // Update active locations
         const tx = db.transaction("lokasi", "readonly");
         const store = tx.objectStore("lokasi");
         const rows = [];
-        
         store.openCursor().onsuccess = e => {
           const cursor = e.target.result;
           if (cursor) {
             const [rLat, rLon] = cursor.value.coords.split(",").map(Number);
             const dist = getDistance(lat, lon, rLat, rLon);
             const tr = document.createElement("tr");
-            tr.dataset.id = cursor.value.id;
-            
-            // Determine status indicator
-            let statusClass = "status-far";
-            if (dist < 5) statusClass = "status-close";
-            else if (dist < 300) statusClass = "status-medium";
-            
             tr.innerHTML = `
-              <td><input type="checkbox" class="select-row"></td>
-              <td><span class="status-indicator ${statusClass}" title="Jarak: ${Math.round(dist)} m"></span></td>
-              <td class="editable" data-field="coords">${cursor.value.coords}</td>
-              <td class="editable" data-field="desc">${cursor.value.desc}</td>
-              <td class="editable" data-field="amount">${cursor.value.amount}</td>
+              <td>${cursor.value.coords}</td>
+              <td>${cursor.value.desc}</td>
+              <td>${cursor.value.amount}</td>
               <td>${Math.round(dist)} m</td>
-              <td>
-                <button class="edit-btn" onclick="editRow(${cursor.value.id}, 'lokasi')">Edit</button>
-              </td>`;
-              
-            // Add history row
-            const historyRow = document.createElement("tr");
-            historyRow.className = "history";
-            historyRow.dataset.id = cursor.value.id;
-            historyRow.innerHTML = `
-              <td colspan="7">
-                <small>Dibuat: ${new Date(cursor.value.timestamp).toLocaleString()}</small>
-                <button onclick="showLocationHistory(${cursor.value.id})">Lihat Riwayat</button>
-                <div id="history-${cursor.value.id}"></div>
-              </td>`;
-              
+              <td><button onclick="deleteRow(${cursor.value.id})">Hapus</button></td>`;
+            tr.classList.remove("blink-red", "blink-green");
+            if (dist < 5) {
+              tr.classList.add("blink-green");
+            } else if (dist < 900) {
+              tr.classList.add("blink-red");
+            }
             tr.dataset.dist = dist;
             rows.push(tr);
-            
-            if (showHistory) {
-              rows.push(historyRow);
-            }
-            
             cursor.continue();
           } else {
             rows.sort((a,b) => a.dataset.dist - b.dataset.dist);
             displayData(rows);
-            setupEditableCells();
-          }
-        };
-        
-        // Update completed locations
-        const completedTx = db.transaction("completed", "readonly");
-        const completedStore = completedTx.objectStore("completed");
-        const completedRows = [];
-        
-        completedStore.openCursor().onsuccess = e => {
-          const cursor = e.target.result;
-          if (cursor) {
-            const [rLat, rLon] = cursor.value.coords.split(",").map(Number);
-            const dist = getDistance(lat, lon, rLat, rLon);
-            const tr = document.createElement("tr");
-            tr.className = "completed";
-            tr.dataset.id = cursor.value.id;
-            
-            tr.innerHTML = `
-              <td><input type="checkbox" class="select-row"></td>
-              <td><span class="status-indicator status-far" title="Jarak: ${Math.round(dist)} m"></span></td>
-              <td class="editable" data-field="coords">${cursor.value.coords}</td>
-              <td class="editable" data-field="desc">${cursor.value.desc}</td>
-              <td class="editable" data-field="amount">${cursor.value.amount}</td>
-              <td>${Math.round(dist)} m</td>
-              <td>
-                <button class="edit-btn" onclick="editRow(${cursor.value.id}, 'completed')">Edit</button>
-              </td>`;
-              
-            completedRows.push(tr);
-            cursor.continue();
-          } else {
-            completedRows.sort((a,b) => a.dataset.dist - b.dataset.dist);
-            displayCompletedData(completedRows);
-            setupEditableCells();
-          }
-        };
-      }, null, { enableHighAccuracy: true });
-    }
-
-    // Setup editable cells
-    function setupEditableCells() {
-      document.querySelectorAll('.editable').forEach(cell => {
-        cell.addEventListener('click', function() {
-          const row = this.closest('tr');
-          const id = parseInt(row.dataset.id);
-          const storeName = row.classList.contains('completed') ? 'completed' : 'lokasi';
-          const field = this.dataset.field;
-          const currentValue = this.textContent;
-          
-          // Create edit form
-          const editForm = document.createElement('div');
-          editForm.className = 'edit-form';
-          editForm.innerHTML = `
-            <input type="${field === 'amount' ? 'number' : 'text'}" value="${currentValue}" class="edit-input">
-            <button onclick="saveEdit(${id}, '${storeName}', '${field}', this)">Simpan</button>
-            <button onclick="cancelEdit(this)">Batal</button>
-          `;
-          
-          // Replace cell content with edit form
-          this.innerHTML = '';
-          this.appendChild(editForm);
-          this.querySelector('.edit-input').focus();
-        });
-      });
-    }
-
-    // Save edit
-    function saveEdit(id, storeName, field, button) {
-      const newValue = button.closest('.edit-form').querySelector('.edit-input').value;
-      const tx = db.transaction([storeName, "history"], "readwrite");
-      const store = tx.objectStore(storeName);
-      const historyStore = tx.objectStore("history");
-      
-      store.get(id).onsuccess = function(e) {
-        const item = e.target.result;
-        if (item) {
-          const oldValue = item[field];
-          item[field] = field === 'amount' ? parseInt(newValue) : newValue;
-          
-          // Update in database
-          store.put(item).onsuccess = function() {
-            // Add to history
-            historyStore.add({
-              locationId: id,
-              action: `edited_${field}`,
-              timestamp: new Date().toISOString(),
-              data: { old: oldValue, new: newValue }
-            });
-            
-            // Refresh display
-            if (storeName === 'lokasi') {
-              displayData();
-            } else {
-              displayCompletedData();
-            }
-          };
-        }
-      };
-    }
-
-    // Cancel edit
-    function cancelEdit(button) {
-      const cell = button.closest('.editable');
-      const originalContent = cell.dataset.originalContent || cell.textContent;
-      cell.innerHTML = originalContent;
-    }
-
-    // Edit row (full form)
-    function editRow(id, storeName) {
-      const tx = db.transaction(storeName, "readwrite");
-      const store = tx.objectStore(storeName);
-      
-      store.get(id).onsuccess = function(e) {
-        const item = e.target.result;
-        if (item) {
-          // Create edit modal
-          const modal = document.createElement('div');
-          modal.style.position = 'fixed';
-          modal.style.top = '0';
-          modal.style.left = '0';
-          modal.style.right = '0';
-          modal.style.bottom = '0';
-          modal.style.backgroundColor = 'rgba(0,0,0,0.5)';
-          modal.style.display = 'flex';
-          modal.style.justifyContent = 'center';
-          modal.style.alignItems = 'center';
-          modal.style.zIndex = '1000';
-          
-          modal.innerHTML = `
-            <div style="background: white; padding: 20px; border-radius: 5px; width: 80%; max-width: 500px;">
-              <h3>Edit Data</h3>
-              <div class="form-group">
-                <label>Koordinat:</label>
-                <input type="text" id="edit-coords" value="${item.coords}">
-              </div>
-              <div class="form-group">
-                <label>Keterangan:</label>
-                <input type="text" id="edit-desc" value="${item.desc}">
-              </div>
-              <div class="form-group">
-                <label>Jumlah:</label>
-                <input type="number" id="edit-amount" value="${item.amount}">
-              </div>
-              <div style="display: flex; gap: 10px; margin-top: 15px;">
-                <button onclick="saveFullEdit(${id}, '${storeName}', this)">Simpan</button>
-                <button onclick="this.closest('div').remove()">Batal</button>
-              </div>
-            </div>
-          `;
-          
-          document.body.appendChild(modal);
-        }
-      };
-    }
-
-    // Save full edit
-    function saveFullEdit(id, storeName, button) {
-      const modal = button.closest('div').parentNode.parentNode;
-      const coords = modal.querySelector('#edit-coords').value;
-      const desc = modal.querySelector('#edit-desc').value;
-      const amount = parseInt(modal.querySelector('#edit-amount').value);
-      
-      if (!coords || !desc || isNaN(amount)) {
-        alert('Lengkapi semua data!');
-        return;
-      }
-      
-      const tx = db.transaction([storeName, "history"], "readwrite");
-      const store = tx.objectStore(storeName);
-      const historyStore = tx.objectStore("history");
-      
-      store.get(id).onsuccess = function(e) {
-        const item = e.target.result;
-        if (item) {
-          const oldData = {...item};
-          item.coords = coords;
-          item.desc = desc;
-          item.amount = amount;
-          
-          // Update in database
-          store.put(item).onsuccess = function() {
-            // Add to history
-            historyStore.add({
-              locationId: id,
-              action: 'full_edit',
-              timestamp: new Date().toISOString(),
-              data: { old: oldData, new: item }
-            });
-            
-            // Remove modal
-            modal.remove();
-            
-            // Refresh display
-            if (storeName === 'lokasi') {
-              displayData();
-            } else {
-              displayCompletedData();
-            }
-          };
-        }
-      };
-    }
-
-    // Tab functionality
-    function openTab(evt, tabName) {
-      const tabcontents = document.getElementsByClassName("tabcontent");
-      for (let i = 0; i < tabcontents.length; i++) {
-        tabcontents[i].classList.remove("active");
-      }
-      
-      const tablinks = document.getElementsByClassName("tablinks");
-      for (let i = 0; i < tablinks.length; i++) {
-        tablinks[i].classList.remove("active");
-      }
-      
-      document.getElementById(tabName).classList.add("active");
-      evt.currentTarget.classList.add("active");
-      
-      // Refresh data when switching tabs
-      if (tabName === 'reportTab') {
-        displayData();
-      } else if (tabName === 'completedTab') {
-        displayCompletedData();
-      }
-    }
-
-    // Export/Import functionality
-    document.getElementById("exportData").onclick = function() {
-      const fileName = document.getElementById("fileName").value || 'lokasi_data';
-      
-      const tx = db.transaction(["lokasi", "completed", "history"], "readonly");
-      const lokasiStore = tx.objectStore("lokasi");
-      const completedStore = tx.objectStore("completed");
-      const historyStore = tx.objectStore("history");
-      
-      Promise.all([
-        new Promise(resolve => {
-          lokasiStore.getAll().onsuccess = e => resolve({ lokasi: e.target.result });
-        }),
-        new Promise(resolve => {
-          completedStore.getAll().onsuccess = e => resolve({ completed: e.target.result });
-        }),
-        new Promise(resolve => {
-          historyStore.getAll().onsuccess = e => resolve({ history: e.target.result });
-        })
-      ]).then(results => {
-        const data = Object.assign({}, ...results);
-        const dataStr = JSON.stringify(data, null, 2);
-        const blob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${fileName}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      });
-    };
-
-    document.getElementById("importData").onclick = function() {
-      if (confirm("Import data akan menimpa data yang ada. Lanjutkan?")) {
-        document.getElementById("fileInput").click();
-      }
-    };
-
-    document.getElementById("fileInput").onchange = function(e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        try {
-          const data = JSON.parse(e.target.result);
-          
-          const tx = db.transaction(["lokasi", "completed", "history"], "readwrite");
-          const lokasiStore = tx.objectStore("lokasi");
-          const completedStore = tx.objectStore("completed");
-          const historyStore = tx.objectStore("history");
-          
-          // Clear existing data
-          lokasiStore.clear();
-          completedStore.clear();
-          historyStore.clear();
-          
-          // Import new data
-          if (data.lokasi) {
-            data.lokasi.forEach(item => lokasiStore.add(item));
-          }
-          if (data.completed) {
-            data.completed.forEach(item => completedStore.add(item));
-          }
-          if (data.history) {
-            data.history.forEach(item => historyStore.add(item));
-          }
-          
-          tx.oncomplete = function() {
-            alert("Data berhasil diimport!");
-            displayData();
-            displayCompletedData();
-          };
-        } catch (err) {
-          alert("Error parsing file: " + err.message);
-        }
-      };
-      reader.readAsText(file);
-    };
-
-    // Toggle history visibility
-    document.getElementById("showHistory").onclick = function() {
-      showHistory = !showHistory;
-      this.textContent = showHistory ? "Sembunyikan Riwayat" : "Riwayat";
-      displayData();
-    };
-
-    // Show location history
-    function showLocationHistory(locationId) {
-      const historyDiv = document.getElementById(`history-${locationId}`);
-      const tx = db.transaction("history", "readonly");
-      const store = tx.objectStore("history");
-      const index = store.index("locationId");
-      
-      historyDiv.innerHTML = "<p>Memuat riwayat...</p>";
-      
-      const request = index.getAll(locationId);
-      request.onsuccess = function(e) {
-        const historyItems = e.target.result;
-        if (historyItems.length === 0) {
-          historyDiv.innerHTML = "<p>Tidak ada riwayat</p>";
-          return;
-        }
-        
-        let html = "<ul>";
-        historyItems.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-        historyItems.forEach(item => {
-          const actionMap = {
-            'created': 'Dibuat',
-            'completed': 'Diselesaikan',
-            'restored': 'Dikembalikan',
-            'edited_coords': 'Edit Koordinat',
-            'edited_desc': 'Edit Keterangan',
-            'edited_amount': 'Edit Jumlah',
-            'full_edit': 'Edit Lengkap'
-          };
-          
-          const actionText = actionMap[item.action] || item.action;
-          const time = new Date(item.timestamp).toLocaleString();
-          
-          html += `<li><strong>${actionText}</strong> - ${time}`;
-          
-          if (item.action === 'full_edit') {
-            html += `<div style="margin-left: 15px; font-size: 0.9em;">
-              <p><strong>Perubahan:</strong></p>
-              <p>Koordinat: ${item.data.old.coords} → ${item.data.new.coords}</p>
-              <p>Keterangan: ${item.data.old.desc} → ${item.data.new.desc}</p>
-              <p>Jumlah: ${item.data.old.amount} → ${item.data.new.amount}</p>
-            </div>`;
-          } else if (item.action.startsWith('edited_')) {
-            html += `<div style="margin-left: 15px; font-size: 0.9em;">
-              ${item.data.old} → ${item.data.new}
-            </div>`;
-          }
-          
-          html += "</li>";
-        });
-        html += "</ul>";
-        historyDiv.innerHTML = html;
-      };
-    }
-
-    // Mark selected as completed
-    document.getElementById("completeSelected").onclick = function() {
-      const checkboxes = document.querySelectorAll("#report tbody .select-row:checked");
-      if (checkboxes.length === 0) {
-        alert("Pilih minimal satu item!");
-        return;
-      }
-      
-      if (!confirm(`Anda yakin ingin menandai ${checkboxes.length} item sebagai selesai?`)) {
-        return;
-      }
-      
-      const tx = db.transaction(["lokasi", "completed", "history"], "readwrite");
-      const lokasiStore = tx.objectStore("lokasi");
-      const completedStore = tx.objectStore("completed");
-      const historyStore = tx.objectStore("history");
-      
-      let processed = 0;
-      checkboxes.forEach(checkbox => {
-        const row = checkbox.closest("tr");
-        const id = parseInt(row.dataset.id);
-        
-        lokasiStore.get(id).onsuccess = function(e) {
-          const item = e.target.result;
-          if (item) {
-            // Add to completed
-            const newItem = {...item};
-            delete newItem.id;
-            completedStore.add(newItem).onsuccess = function() {
-              // Add to history
-              historyStore.add({
-                locationId: id,
-                action: "completed",
-                timestamp: new Date().toISOString(),
-                data: newItem
-              });
-              
-              // Delete from lokasi
-              lokasiStore.delete(id);
-              
-              processed++;
-              if (processed === checkboxes.length) {
-                displayData();
-                displayCompletedData();
-              }
-            };
           }
         };
       });
-    };
-
-    // Restore selected from completed
-    document.getElementById("restoreSelected").onclick = function() {
-      const checkboxes = document.querySelectorAll("#completedReport tbody .select-row:checked");
-      if (checkboxes.length === 0) {
-        alert("Pilih minimal satu item!");
-        return;
-      }
-      
-      if (!confirm(`Anda yakin ingin mengembalikan ${checkboxes.length} item ke laporan?`)) {
-        return;
-      }
-      
-      const tx = db.transaction(["lokasi", "completed", "history"], "readwrite");
-      const lokasiStore = tx.objectStore("lokasi");
-      const completedStore = tx.objectStore("completed");
-      const historyStore = tx.objectStore("history");
-      
-      let processed = 0;
-      checkboxes.forEach(checkbox => {
-        const row = checkbox.closest("tr");
-        const id = parseInt(row.dataset.id);
-        
-        completedStore.get(id).onsuccess = function(e) {
-          const item = e.target.result;
-          if (item) {
-            // Add back to lokasi
-            const newItem = {...item};
-            delete newItem.id;
-            lokasiStore.add(newItem).onsuccess = function(addResult) {
-              // Add to history
-              historyStore.add({
-                locationId: addResult.target.result,
-                action: "restored",
-                timestamp: new Date().toISOString(),
-                data: newItem
-              });
-              
-              // Delete from completed
-              completedStore.delete(id);
-              
-              processed++;
-              if (processed === checkboxes.length) {
-                displayData();
-                displayCompletedData();
-              }
-            };
-          }
-        };
-      });
-    };
-
-    // Warn before closing if there are unsaved changes
-    window.addEventListener('beforeunload', function(e) {
-      // You could add logic here to check for unsaved changes
-      // For now, we'll just always warn
-      e.preventDefault();
-      e.returnValue = 'Anda mungkin memiliki perubahan yang belum disimpan. Yakin ingin meninggalkan halaman?';
-    });
+    }
   </script>
 </body>
 </html>
