@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
-  <title>Rekam Lokasi dengan Jarak</title>
+  <title>Rekam Lokasi dengan Jarak + Export Import</title>
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; }
     table { width: 100%; border-collapse: collapse; margin-top: 20px; }
@@ -33,6 +33,9 @@
   <input type="number" id="amount"><br><br>
   <button id="save">Simpan</button>
   <button id="clearAll">Hapus Semua</button>
+  <button id="export">Export JSON</button>
+  <input type="file" id="importFile" accept=".json">
+  <button id="import">Import JSON</button>
 
   <h3>Laporan Lokasi</h3>
   <table id="report">
@@ -92,6 +95,52 @@
       const tx = db.transaction("lokasi", "readwrite");
       tx.objectStore("lokasi").clear();
       tx.oncomplete = () => displayData();
+    };
+
+    document.getElementById("export").onclick = () => {
+      const tx = db.transaction("lokasi", "readonly");
+      const store = tx.objectStore("lokasi");
+      const allData = [];
+      store.openCursor().onsuccess = e => {
+        const cursor = e.target.result;
+        if (cursor) {
+          allData.push(cursor.value);
+          cursor.continue();
+        } else {
+          const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "lokasi_data.json";
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+      };
+    };
+
+    document.getElementById("import").onclick = () => {
+      const fileInput = document.getElementById("importFile");
+      if (!fileInput.files.length) {
+        alert("Pilih file JSON dulu!");
+        return;
+      }
+      const file = fileInput.files[0];
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const data = JSON.parse(e.target.result);
+          const tx = db.transaction("lokasi", "readwrite");
+          const store = tx.objectStore("lokasi");
+          data.forEach(item => {
+            delete item.id; // biar autoIncrement ID baru
+            store.add(item);
+          });
+          tx.oncomplete = () => displayData();
+        } catch (err) {
+          alert("Format JSON salah!");
+        }
+      };
+      reader.readAsText(file);
     };
 
     function displayData(rows = []) {
@@ -155,4 +204,4 @@
     }
   </script>
 </body>
-</html>
+    </html>
