@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
-  <title>Peta Tracking Sales Jabar</title>
+  <title>Peta Tracking Sales Jabar + Bangunan 2D</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
@@ -14,7 +14,7 @@
   </style>
 </head>
 <body>
-  <h3>Peta Tracking Sales Jabar</h3>
+  <h3>Peta Tracking Sales Jabar + Bangunan 2D</h3>
   <div id="map"></div>
   <div id="form">
     <input id="category" placeholder="Kategori Lokasi">
@@ -25,10 +25,10 @@
   </div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-overpass-layer"></script>
   <script>
-    let db, map, currentLatLng, editingId = null, liveMarker = null;
+    let db, map, currentLatLng, editingId = null, liveMarker = null, buildingsLayer;
 
-    // IndexedDB setup
     const request = indexedDB.open('salesDB', 1);
     request.onupgradeneeded = function(e) {
       db = e.target.result;
@@ -39,8 +39,7 @@
       loadPoints();
     };
 
-    // Leaflet map setup
-    map = L.map('map').setView([-6.9, 107.6], 8); // Fokus Jabar
+    map = L.map('map').setView([-6.9, 107.6], 8);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
     // Lokasi real-time
@@ -67,6 +66,8 @@
 
     map.on('click', function(e) {
       currentLatLng = e.latlng;
+      map.setView(currentLatLng, 18); // auto zoom ke titik
+      loadBuildings(currentLatLng);
       alert(`Koordinat: ${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}\nIsi form lalu klik Simpan.`);
     });
 
@@ -124,8 +125,33 @@
         document.getElementById('details').value = p.details;
         currentLatLng = { lat: p.lat, lng: p.lng };
         editingId = p.id;
+        map.setView(currentLatLng, 18);
+        loadBuildings(currentLatLng);
         alert('Edit data, lalu klik Simpan!');
       };
+    }
+
+    function loadBuildings(latlng) {
+      if (buildingsLayer) {
+        map.removeLayer(buildingsLayer);
+      }
+      const query = `
+        [out:json][timeout:25];
+        (
+          way["building"](${latlng.lat - 0.001},${latlng.lng - 0.001},${latlng.lat + 0.001},${latlng.lng + 0.001});
+        );
+        out body;
+        >;
+        out skel qt;
+      `;
+      buildingsLayer = new L.OverPassLayer({
+        query: query,
+        minZoom: 17,
+        feature: {
+          style: { color: "blue", weight: 1, fillOpacity: 0.2 }
+        }
+      });
+      map.addLayer(buildingsLayer);
     }
 
     function exportData() {
