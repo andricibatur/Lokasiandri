@@ -26,7 +26,7 @@
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    let db, map, currentLatLng;
+    let db, map, currentLatLng, editingId = null, liveMarker = null;
 
     // IndexedDB setup
     const request = indexedDB.open('salesDB', 1);
@@ -43,30 +43,63 @@
     map = L.map('map').setView([-6.9, 107.6], 8); // Fokus Jabar
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
+    // Lokasi real-time
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(
+        function(pos) {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          if (!liveMarker) {
+            liveMarker = L.circleMarker([lat, lng], {
+              radius: 8,
+              color: 'red',
+              fillColor: '#f03',
+              fillOpacity: 0.5
+            }).addTo(map).bindPopup("Lokasi Saya");
+          } else {
+            liveMarker.setLatLng([lat, lng]);
+          }
+        },
+        function(err) { console.error(err); },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+      );
+    }
+
     map.on('click', function(e) {
       currentLatLng = e.latlng;
       alert(`Koordinat: ${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}\nIsi form lalu klik Simpan.`);
     });
 
     function savePoint() {
-      if (!currentLatLng) { alert('Klik peta dulu untuk ambil koordinat!'); return; }
+      if (!currentLatLng && !editingId) { alert('Klik peta dulu atau pilih Edit!'); return; }
       const category = document.getElementById('category').value;
       const details = document.getElementById('details').value;
       const tx = db.transaction('points', 'readwrite');
       const store = tx.objectStore('points');
-      store.add({ lat: currentLatLng.lat, lng: currentLatLng.lng, category, details });
-      tx.oncomplete = () => { 
+
+      if (editingId) {
+        store.put({ id: editingId, lat: currentLatLng.lat, lng: currentLatLng.lng, category, details });
+        editingId = null;
+      } else {
+        store.add({ lat: currentLatLng.lat, lng: currentLatLng.lng, category, details });
+      }
+
+      tx.oncomplete = () => {
         alert('Titik disimpan!');
         currentLatLng = null;
+        document.getElementById('category').value = '';
+        document.getElementById('details').value = '';
         loadPoints();
       };
     }
 
     function loadPoints() {
       map.eachLayer((layer) => {
-        if (layer instanceof L.Marker) map.removeLayer(layer);
+        if (layer instanceof L.Marker && layer !== liveMarker) map.removeLayer(layer);
       });
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+      if (liveMarker) liveMarker.addTo(map);
+
       const tx = db.transaction('points', 'readonly');
       const store = tx.objectStore('points');
       store.openCursor().onsuccess = function(e) {
@@ -75,16 +108,24 @@
           const p = cursor.value;
           const marker = L.marker([p.lat, p.lng]).addTo(map);
           marker.bindPopup(`<b>${p.category}</b><br>${p.details}<br>
-            <button onclick="deletePoint(${cursor.key})">Hapus</button>`);
+            <button onclick="editPoint(${cursor.key})">Edit</button>`);
           cursor.continue();
         }
       };
     }
 
-    function deletePoint(id) {
-      const tx = db.transaction('points', 'readwrite');
-      tx.objectStore('points').delete(id);
-      tx.oncomplete = loadPoints;
+    function editPoint(id) {
+      const tx = db.transaction('points', 'readonly');
+      const store = tx.objectStore('points');
+      const req = store.get(id);
+      req.onsuccess = function() {
+        const p = req.result;
+        document.getElementById('category').value = p.category;
+        document.getElementById('details').value = p.details;
+        currentLatLng = { lat: p.lat, lng: p.lng };
+        editingId = p.id;
+        alert('Edit data, lalu klik Simpan!');
+      };
     }
 
     function exportData() {
