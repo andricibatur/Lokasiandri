@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>Peta Tracking Sales Jabar</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #map { height: 80%; }
+    #form { padding: 10px; }
+    input, textarea { width: 100%; margin: 5px 0; }
+    button { margin: 5px 2px; }
+  </style>
+</head>
+<body>
+  <h3>Peta Tracking Sales Jabar</h3>
+  <div id="map"></div>
+  <div id="form">
+    <input id="category" placeholder="Kategori Lokasi">
+    <textarea id="details" placeholder="Detail Pesanan"></textarea>
+    <button onclick="savePoint()">Simpan Titik</button>
+    <button onclick="exportData()">Export JSON</button>
+    <input type="file" id="fileInput" onchange="importData(event)">
+  </div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    let db, map, currentLatLng;
+
+    // IndexedDB setup
+    const request = indexedDB.open('salesDB', 1);
+    request.onupgradeneeded = function(e) {
+      db = e.target.result;
+      db.createObjectStore('points', { keyPath: 'id', autoIncrement: true });
+    };
+    request.onsuccess = function(e) {
+      db = e.target.result;
+      loadPoints();
+    };
+
+    // Leaflet map setup
+    map = L.map('map').setView([-6.9, 107.6], 8); // Fokus Jabar
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    map.on('click', function(e) {
+      currentLatLng = e.latlng;
+      alert(`Koordinat: ${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}\nIsi form lalu klik Simpan.`);
+    });
+
+    function savePoint() {
+      if (!currentLatLng) { alert('Klik peta dulu untuk ambil koordinat!'); return; }
+      const category = document.getElementById('category').value;
+      const details = document.getElementById('details').value;
+      const tx = db.transaction('points', 'readwrite');
+      const store = tx.objectStore('points');
+      store.add({ lat: currentLatLng.lat, lng: currentLatLng.lng, category, details });
+      tx.oncomplete = () => { 
+        alert('Titik disimpan!');
+        currentLatLng = null;
+        loadPoints();
+      };
+    }
+
+    function loadPoints() {
+      map.eachLayer((layer) => {
+        if (layer instanceof L.Marker) map.removeLayer(layer);
+      });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+      const tx = db.transaction('points', 'readonly');
+      const store = tx.objectStore('points');
+      store.openCursor().onsuccess = function(e) {
+        const cursor = e.target.result;
+        if (cursor) {
+          const p = cursor.value;
+          const marker = L.marker([p.lat, p.lng]).addTo(map);
+          marker.bindPopup(`<b>${p.category}</b><br>${p.details}<br>
+            <button onclick="deletePoint(${cursor.key})">Hapus</button>`);
+          cursor.continue();
+        }
+      };
+    }
+
+    function deletePoint(id) {
+      const tx = db.transaction('points', 'readwrite');
+      tx.objectStore('points').delete(id);
+      tx.oncomplete = loadPoints;
+    }
+
+    function exportData() {
+      const tx = db.transaction('points', 'readonly');
+      const store = tx.objectStore('points');
+      const all = [];
+      store.openCursor().onsuccess = function(e) {
+        const cursor = e.target.result;
+        if (cursor) {
+          all.push(cursor.value);
+          cursor.continue();
+        } else {
+          const blob = new Blob([JSON.stringify(all)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'sales_points.json';
+          a.click();
+        }
+      };
+    }
+
+    function importData(event) {
+      const file = event.target.files[0];
+      const reader = new FileReader();
+      reader.onload = function() {
+        const data = JSON.parse(reader.result);
+        const tx = db.transaction('points', 'readwrite');
+        const store = tx.objectStore('points');
+        data.forEach(p => store.add(p));
+        tx.oncomplete = loadPoints;
+      };
+      reader.readAsText(file);
+    }
+  </script>
+</body>
+</html>
