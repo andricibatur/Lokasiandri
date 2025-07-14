@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>Peta Tracking Auto Follow</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #map { height: 80%; }
+    #form { padding: 10px; }
+    input, textarea { width: 100%; margin: 5px 0; }
+    button { margin: 5px 2px; }
+  </style>
+</head>
+<body>
+  <h3>Peta Tracking Sales Jabar - Auto Follow</h3>
+  <div id="map"></div>
+  <div id="form">
+    <input id="category" placeholder="Kategori Lokasi">
+    <textarea id="details" placeholder="Detail Pesanan"></textarea>
+    <button onclick="savePoint()">Simpan Titik</button>
+    <button onclick="exportData()">Export JSON</button>
+    <input type="file" id="fileInput" onchange="importData(event)">
+    <button onclick="updateCurrentLocation()">Gunakan Lokasi Saat Ini</button>
+  </div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    let db, map, currentLatLng, editingId = null, liveMarker = null;
+    let currentPosition = null;
+    const bipSound = new Audio('https://raw.githubusercontent.com/username/repo/main/bip.mp3');
+
+    // IndexedDB setup
+    const request = indexedDB.open('salesDB', 1);
+    request.onupgradeneeded = function(e) {
+      db = e.target.result;
+      db.createObjectStore('points', { keyPath: 'id', autoIncrement: true });
+    };
+    request.onsuccess = function(e) {
+      db = e.target.result;
+      loadPoints();
+    };
+
+    map = L.map('map').setView([-6.9, 107.6], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    // Tag gerak-gerak + auto follow
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(
+        function(pos) {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          currentPosition = { lat, lng };
+          
+          if (!liveMarker) {
+            liveMarker = L.circleMarker([lat, lng], {
+              radius: 8,
+              color: 'red',
+              fillColor: '#f03',
+              fillOpacity: 0.5
+            }).addTo(map).bindPopup("Lokasi Saya").openPopup();
+          } else {
+            liveMarker.setLatLng([lat, lng]);
+          }
+          
+          // Peta auto ikuti lokasi
+          map.setView([lat, lng], 18);
+          
+          // Cek jarak ke semua titik
+          checkDistanceToPoints(lat, lng);
+        },
+        function(err) { console.error(err); },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+      );
+    }
+
+    function checkDistanceToPoints(lat, lng) {
+      const tx = db.transaction('points', 'readonly');
+      const store = tx.objectStore('points');
+      store.getAll().onsuccess = function(e) {
+        const points = e.target.result;
+        points.forEach(point => {
+          const distance = calculateDistance(lat, lng, point.lat, point.lng);
+          if (distance <= 100) {
+            playBipSound(distance);
+          }
+        });
+      };
+    }
+
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371e3;
+      const φ1 = lat1 * Math.PI/180;
+      const φ2 = lat2 * Math.PI/180;
+      const Δφ = (lat2-lat1) * Math.PI/180;
+      const Δλ = (lon2-lon1) * Math.PI/180;
+
+      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ/2) * Math.sin(Δλ/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+      return R * c;
+    }
+
+    function playBipSound(distance) {
+      bipSound.play().catch(e => console.log("Autoplay prevented:", e));
+      
+      if (Notification.permission === "granted") {
+        new Notification("Anda mendekati titik!", {
+          body: `Jarak: ${Math.round(distance)} meter`
+        });
+      }
+    }
+
+    function updateCurrentLocation() {
+      if (currentPosition) {
+        currentLatLng = currentPosition;
+        alert(`Koordinat diubah ke lokasi saat ini: ${currentPosition.lat.toFixed(6)}, ${currentPosition.lng.toFixed(6)}`);
+      } else {
+        alert("Lokasi saat ini belum tersedia");
+      }
+    }
+
+    map.on('click', function(e) {
+      currentLatLng = e.latlng;
+      alert(`Koordinat: ${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}\nIsi form lalu klik Simpan.`);
+    });
+
+    function savePoint() {
+      if (!currentLatLng && !editingId) { alert('Klik peta dulu atau pilih Edit!'); return; }
+      const category = document.getElementById('category').value;
+      const details = document.getElementById('details').value;
+      const tx = db.transaction('points', 'readwrite');
+      const store = tx.objectStore('points');
+
+      if (editingId) {
+        store.put({ id: editingId, lat: currentLatLng.lat, lng: currentLatLng.lng, category, details });
+        editingId = null;
+      } else {
+        store.add({ lat: currentLatLng.lat, lng: currentLatLng.lng, category, details });
+      }
+
+      tx.oncomplete = () => {
+        alert('Titik disimpan!');
+        currentLatLng = null;
+        document.getElementById('category').value = '';
+        document.getElementById('details').value = '';
+        loadPoints();
+      };
+    }
+
+    function loadPoints() {
+      map.eachLayer((layer) => {
+        if (layer instanceof L.Marker && layer !== liveMarker) map.removeLayer(layer);
+      });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+      if (liveMarker) liveMarker.addTo(map);
+
+      const tx = db.transaction('points', 'readonly');
+      const store = tx.objectStore('points');
+      store.openCursor().onsuccess = function(e) {
+        const cursor = e.target.result;
+        if (cursor) {
+          const p = cursor.value;
+          const marker = L.marker([p.lat, p.lng]).addTo(map);
+          marker.bindPopup(`<b>${p.category}</b><br>${p.details}<br>
+            <button onclick="editPoint(${cursor.key})">Edit</button>`);
+          cursor.continue();
+        }
+      };
+    }
+
+    function editPoint(id) {
+      const tx = db.transaction('points', 'readonly');
+      const store = tx.objectStore('points');
+      const req = store.get(id);
+      req.onsuccess = function() {
+        const p = req.result;
+        document.getElementById('category').value = p.category;
+        document.getElementById('details').value = p.details;
+        currentLatLng = { lat: p.lat, lng: p.lng };
+        editingId = p.id;
+        alert('Edit data, lalu klik Simpan!');
+      };
+    }
+
+    function exportData() {
+      const tx = db.transaction('points', 'readonly');
+      const store = tx.objectStore('points');
+      const all = [];
+      store.openCursor().onsuccess = function(e) {
+        const cursor = e.target.result;
+        if (cursor) {
+          all.push(cursor.value);
+          cursor.continue();
+        } else {
+          const blob = new Blob([JSON.stringify(all)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'sales_points.json';
+          a.click();
+        }
+      };
+    }
+
+    function importData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = function() {
+        try {
+          const data = JSON.parse(reader.result);
+          if (!Array.isArray(data)) {
+            throw new Error("File harus berisi array data");
+          }
+          
+          const tx = db.transaction('points', 'readwrite');
+          const store = tx.objectStore('points');
+          
+          store.clear().onsuccess = function() {
+            data.forEach(p => {
+              const point = {
+                lat: parseFloat(p.lat),
+                lng: parseFloat(p.lng),
+                category: p.category || '',
+                details: p.details || ''
+              };
+              store.add(point);
+            });
+            
+            tx.oncomplete = function() {
+              alert(`Berhasil mengimpor ${data.length} titik!`);
+              loadPoints();
+            };
+            
+            tx.onerror = function(e) {
+              console.error("Import error:", e);
+              alert("Gagal mengimpor data, periksa format file");
+            };
+          };
+        } catch (e) {
+          console.error("Parsing error:", e);
+          alert("Format file tidak valid: " + e.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // Minta izin notifikasi
+    if ('Notification' in window) {
+      Notification.requestPermission();
+    }
+  </script>
+</body>
+</html>
