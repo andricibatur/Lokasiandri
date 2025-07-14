@@ -1,215 +1,166 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <title>TRACKING SALES + BIP OTOMATIS</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+  <meta charset="UTF-8" />
+  <title>Peta Tracking Auto Follow</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
-    html, body { height: 100%; margin: 0; font-family: Arial, sans-serif; }
-    #map { height: 70%; }
-    #form { padding: 15px; background: #f5f5f5; }
-    input, textarea, button { margin: 5px 0; width: 100%; padding: 8px; }
-    button { background: #4CAF50; color: white; border: none; cursor: pointer; }
-    button:hover { background: #45a049; }
-    .coord-input { display: flex; gap: 10px; }
-    .coord-input input { width: 48%; }
+    html, body { height: 100%; margin: 0; }
+    #map { height: 80%; }
+    #form { padding: 10px; }
+    input, textarea { width: 100%; margin: 5px 0; }
+    button { margin: 5px 2px; }
   </style>
 </head>
 <body>
-  <h2 style="text-align: center; color: #FF5722;">🛵 TRACKING SALES + BIP OTOMATIS</h2>
+  <h3>Peta Tracking Sales Jabar - Auto Follow</h3>
   <div id="map"></div>
   <div id="form">
-    <div class="coord-input">
-      <input type="number" id="latitude" placeholder="Latitude" step="0.000001">
-      <input type="number" id="longitude" placeholder="Longitude" step="0.000001">
-    </div>
-    <button onclick="gunakanKoordinatSekarang()">📍 Pakai Lokasi Sekarang</button>
-    <button onclick="gunakanKlikPeta()">🗺️ Pakai Klik Peta</button>
-    <input type="text" id="category" placeholder="Nama Pelanggan">
-    <textarea id="details" placeholder="Detail Pesanan..."></textarea>
-    <button onclick="simpanTitik()" style="background: #FF5722;">💾 SIMPAN TITIK</button>
-    <button onclick="exportData()">📤 EXPORT DATA</button>
-    <input type="file" id="fileInput" onchange="importData(event)" accept=".json">
+    <input id="category" placeholder="Kategori Lokasi">
+    <textarea id="details" placeholder="Detail Pesanan"></textarea>
+    <button onclick="savePoint()">Simpan Titik</button>
+    <button onclick="exportData()">Export JSON</button>
+    <input type="file" id="fileInput" onchange="importData(event)">
   </div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    // Inisialisasi
-    let map, currentLatLng, liveMarker;
-    const STORAGE_KEY = "SALES_TRACKER_DATA_V2";
-    const bipSound = new Audio("https://raw.githubusercontent.com/username-kamu/repo-kamu/main/bip.mp3"); // GANTI LINK INI!
+    let db, map, currentLatLng, editingId = null, liveMarker = null;
 
-    // Init peta
-    function initMap() {
-      map = L.map('map').setView([-6.9, 107.6], 16);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    // IndexedDB setup
+    const request = indexedDB.open('salesDB', 1);
+    request.onupgradeneeded = function(e) {
+      db = e.target.result;
+      db.createObjectStore('points', { keyPath: 'id', autoIncrement: true });
+    };
+    request.onsuccess = function(e) {
+      db = e.target.result;
       loadPoints();
+    };
 
-      // Auto tracking GPS
-      if (navigator.geolocation) {
-        navigator.geolocation.watchPosition(
-          pos => updatePosisi(pos),
-          err => console.error("GPS Error:", err),
-          { enableHighAccuracy: true }
-        );
-      }
-    }
+    map = L.map('map').setView([-6.9, 107.6], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    // Update posisi + cek bip
-    function updatePosisi(pos) {
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-      
-      // Update marker
-      if (!liveMarker) {
-        liveMarker = L.marker([lat, lng]).addTo(map)
-          .bindPopup("LOKASI KAMU").openPopup();
-      } else {
-        liveMarker.setLatLng([lat, lng]);
-      }
-      map.setView([lat, lng], 18);
-
-      // Cek jarak ke semua titik
-      const savedData = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-      savedData.forEach(point => {
-        const jarak = hitungJarak(lat, lng, point.lat, point.lng);
-        
-        // BIP kalau < 100m
-        if (jarak < 100) {
-          playBip();
-          // Ngomong otomatis kalau < 50m
-          if (jarak < 50) {
-            speak(`Dekat ${point.category}, pesanan: ${point.details}`);
+    // Tag gerak-gerak + auto follow
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(
+        function(pos) {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          if (!liveMarker) {
+            liveMarker = L.circleMarker([lat, lng], {
+              radius: 8,
+              color: 'red',
+              fillColor: '#f03',
+              fillOpacity: 0.5
+            }).addTo(map).bindPopup("Lokasi Saya").openPopup();
+          } else {
+            liveMarker.setLatLng([lat, lng]);
           }
-        }
-      });
+          // Peta auto ikuti lokasi
+          map.setView([lat, lng], 18);
+        },
+        function(err) { console.error(err); },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+      );
     }
 
-    // Fungsi hitung jarak (meter)
-    function hitungJarak(lat1, lng1, lat2, lng2) {
-      const R = 6371e3;
-      const φ1 = lat1 * Math.PI/180;
-      const φ2 = lat2 * Math.PI/180;
-      const Δφ = (lat2-lat1) * Math.PI/180;
-      const Δλ = (lng2-lng1) * Math.PI/180;
-      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                Math.cos(φ1) * Math.cos(φ2) *
-                Math.sin(Δλ/2) * Math.sin(Δλ/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      return R * c;
-    }
+    map.on('click', function(e) {
+      currentLatLng = e.latlng;
+      alert(`Koordinat: ${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}\nIsi form lalu klik Simpan.`);
+    });
 
-    // Play BIP
-    function playBip() {
-      if (bipSound) {
-        bipSound.currentTime = 0;
-        bipSound.play().catch(e => console.log("BIP error:", e));
-      }
-    }
-
-    // Text-to-speech
-    function speak(text) {
-      if ('speechSynthesis' in window) {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'id-ID';
-        window.speechSynthesis.speak(utterance);
-      }
-    }
-
-    // Fungsi lainnya (simpan/load titik, dll) sama persis seperti kode sebelumnya
-    function gunakanKoordinatSekarang() {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(pos => {
-          document.getElementById('latitude').value = pos.coords.latitude.toFixed(6);
-          document.getElementById('longitude').value = pos.coords.longitude.toFixed(6);
-        });
-      }
-    }
-
-    function gunakanKlikPeta() {
-      map.once('click', e => {
-        currentLatLng = e.latlng;
-        document.getElementById('latitude').value = e.latlng.lat.toFixed(6);
-        document.getElementById('longitude').value = e.latlng.lng.toFixed(6);
-      });
-      alert("Klik di peta untuk pilih lokasi!");
-    }
-
-    function simpanTitik() {
-      const lat = parseFloat(document.getElementById('latitude').value);
-      const lng = parseFloat(document.getElementById('longitude').value);
+    function savePoint() {
+      if (!currentLatLng && !editingId) { alert('Klik peta dulu atau pilih Edit!'); return; }
       const category = document.getElementById('category').value;
       const details = document.getElementById('details').value;
+      const tx = db.transaction('points', 'readwrite');
+      const store = tx.objectStore('points');
 
-      if (!lat || !lng) return alert("Isi koordinat dulu!");
+      if (editingId) {
+        store.put({ id: editingId, lat: currentLatLng.lat, lng: currentLatLng.lng, category, details });
+        editingId = null;
+      } else {
+        store.add({ lat: currentLatLng.lat, lng: currentLatLng.lng, category, details });
+      }
 
-      const newPoint = {
-        id: Date.now(),
-        lat: lat,
-        lng: lng,
-        category: category,
-        details: details,
-        timestamp: new Date().toISOString()
+      tx.oncomplete = () => {
+        alert('Titik disimpan!');
+        currentLatLng = null;
+        document.getElementById('category').value = '';
+        document.getElementById('details').value = '';
+        loadPoints();
       };
-
-      const existingData = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-      existingData.push(newPoint);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(existingData));
-
-      alert("Data tersimpan!");
-      loadPoints();
     }
 
     function loadPoints() {
-      map.eachLayer(layer => {
-        if (layer instanceof L.Marker && layer !== liveMarker) {
-          map.removeLayer(layer);
-        }
+      map.eachLayer((layer) => {
+        if (layer instanceof L.Marker && layer !== liveMarker) map.removeLayer(layer);
       });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+      if (liveMarker) liveMarker.addTo(map);
 
-      const savedData = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-      savedData.forEach(point => {
-        const marker = L.marker([point.lat, point.lng]).addTo(map)
-          .bindPopup(`
-            <b>${point.category}</b><br>
-            ${point.details}<br>
-            <button onclick="hapusTitik(${point.id})">❌ Hapus</button>
-          `);
-      });
+      const tx = db.transaction('points', 'readonly');
+      const store = tx.objectStore('points');
+      store.openCursor().onsuccess = function(e) {
+        const cursor = e.target.result;
+        if (cursor) {
+          const p = cursor.value;
+          const marker = L.marker([p.lat, p.lng]).addTo(map);
+          marker.bindPopup(`<b>${p.category}</b><br>${p.details}<br>
+            <button onclick="editPoint(${cursor.key})">Edit</button>`);
+          cursor.continue();
+        }
+      };
     }
 
-    function hapusTitik(id) {
-      const savedData = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-      const newData = savedData.filter(point => point.id !== id);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
-      loadPoints();
+    function editPoint(id) {
+      const tx = db.transaction('points', 'readonly');
+      const store = tx.objectStore('points');
+      const req = store.get(id);
+      req.onsuccess = function() {
+        const p = req.result;
+        document.getElementById('category').value = p.category;
+        document.getElementById('details').value = p.details;
+        currentLatLng = { lat: p.lat, lng: p.lng };
+        editingId = p.id;
+        alert('Edit data, lalu klik Simpan!');
+      };
     }
 
     function exportData() {
-      const data = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-      const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'sales_data.json';
-      a.click();
+      const tx = db.transaction('points', 'readonly');
+      const store = tx.objectStore('points');
+      const all = [];
+      store.openCursor().onsuccess = function(e) {
+        const cursor = e.target.result;
+        if (cursor) {
+          all.push(cursor.value);
+          cursor.continue();
+        } else {
+          const blob = new Blob([JSON.stringify(all)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'sales_points.json';
+          a.click();
+        }
+      };
     }
 
     function importData(event) {
       const file = event.target.files[0];
       const reader = new FileReader();
-      reader.onload = function(e) {
-        const data = JSON.parse(e.target.result);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-        loadPoints();
-        alert(`✅ ${data.length} data berhasil diimport!`);
+      reader.onload = function() {
+        const data = JSON.parse(reader.result);
+        const tx = db.transaction('points', 'readwrite');
+        const store = tx.objectStore('points');
+        data.forEach(p => store.add(p));
+        tx.oncomplete = loadPoints;
       };
       reader.readAsText(file);
     }
-
-    // Jalankan!
-    window.onload = initMap;
   </script>
 </body>
 </html>
