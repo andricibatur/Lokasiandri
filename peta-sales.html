@@ -22,11 +22,14 @@
     <button onclick="savePoint()">Simpan Titik</button>
     <button onclick="exportData()">Export JSON</button>
     <input type="file" id="fileInput" onchange="importData(event)">
+    <button onclick="updateCurrentLocation()">Gunakan Lokasi Saat Ini</button>
   </div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
     let db, map, currentLatLng, editingId = null, liveMarker = null;
+    let currentPosition = null;
+    const bipSound = new Audio('https://raw.githubusercontent.com/username/repo/main/bip.mp3'); // Ganti dengan URL bip.mp3 di GitHub Anda
 
     // IndexedDB setup
     const request = indexedDB.open('salesDB', 1);
@@ -48,6 +51,8 @@
         function(pos) {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
+          currentPosition = { lat, lng };
+          
           if (!liveMarker) {
             liveMarker = L.circleMarker([lat, lng], {
               radius: 8,
@@ -58,12 +63,66 @@
           } else {
             liveMarker.setLatLng([lat, lng]);
           }
+          
           // Peta auto ikuti lokasi
           map.setView([lat, lng], 18);
+          
+          // Cek jarak ke semua titik
+          checkDistanceToPoints(lat, lng);
         },
         function(err) { console.error(err); },
         { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
       );
+    }
+
+    function checkDistanceToPoints(lat, lng) {
+      const tx = db.transaction('points', 'readonly');
+      const store = tx.objectStore('points');
+      store.getAll().onsuccess = function(e) {
+        const points = e.target.result;
+        points.forEach(point => {
+          const distance = calculateDistance(lat, lng, point.lat, point.lng);
+          if (distance <= 100) { // 100 meter
+            playBipSound(distance);
+          }
+        });
+      };
+    }
+
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371e3; // meters
+      const φ1 = lat1 * Math.PI/180;
+      const φ2 = lat2 * Math.PI/180;
+      const Δφ = (lat2-lat1) * Math.PI/180;
+      const Δλ = (lon2-lon1) * Math.PI/180;
+
+      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ/2) * Math.sin(Δλ/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+      return R * c;
+    }
+
+    function playBipSound(distance) {
+      // Mainkan suara bip
+      bipSound.play().catch(e => console.log("Autoplay prevented:", e));
+      
+      // Beri notifikasi visual
+      if (Notification.permission === "granted") {
+        new Notification("Anda mendekati titik!", {
+          body: `Jarak: ${Math.round(distance)} meter`
+        });
+      }
+    }
+
+    function updateCurrentLocation() {
+      if (currentPosition) {
+        currentLatLng = currentPosition;
+        alert(`Koordinat diubah ke lokasi saat ini: ${currentPosition.lat.toFixed(6)}, ${currentPosition.lng.toFixed(6)}`);
+      } else {
+        alert("Lokasi saat ini belum tersedia");
+      }
     }
 
     map.on('click', function(e) {
@@ -109,7 +168,8 @@
           const p = cursor.value;
           const marker = L.marker([p.lat, p.lng]).addTo(map);
           marker.bindPopup(`<b>${p.category}</b><br>${p.details}<br>
-            <button onclick="editPoint(${cursor.key})">Edit</button>`);
+            <button onclick="editPoint(${cursor.key})">Edit</button>
+            <button onclick="updateToCurrentLocation(${cursor.key})">Gunakan Lokasi Saat Ini</button>`);
           cursor.continue();
         }
       };
@@ -127,6 +187,31 @@
         editingId = p.id;
         alert('Edit data, lalu klik Simpan!');
       };
+    }
+
+    function updateToCurrentLocation(id) {
+      if (!currentPosition) {
+        alert("Lokasi saat ini belum tersedia");
+        return;
+      }
+      
+      if (confirm("Ganti koordinat titik ini dengan lokasi Anda saat ini?")) {
+        const tx = db.transaction('points', 'readwrite');
+        const store = tx.objectStore('points');
+        const req = store.get(id);
+        
+        req.onsuccess = function() {
+          const p = req.result;
+          p.lat = currentPosition.lat;
+          p.lng = currentPosition.lng;
+          store.put(p);
+          
+          tx.oncomplete = function() {
+            alert('Koordinat titik telah diperbarui!');
+            loadPoints();
+          };
+        };
+      }
     }
 
     function exportData() {
@@ -160,6 +245,11 @@
         tx.oncomplete = loadPoints;
       };
       reader.readAsText(file);
+    }
+
+    // Minta izin notifikasi
+    if ('Notification' in window) {
+      Notification.requestPermission();
     }
   </script>
 </body>
