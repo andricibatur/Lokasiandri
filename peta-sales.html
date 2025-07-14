@@ -1,8 +1,8 @@
-IP<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <title>TRACKING SALES PRO MAX ULTRA 🔥</title>
+  <title>TRACKING SALES + BIP OTOMATIS</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
   <style>
@@ -17,16 +17,16 @@ IP<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <h2 style="text-align: center; color: #FF5722;">🛵 TRACKING SALES JABAR - MODE WARRIOR ⚔️</h2>
+  <h2 style="text-align: center; color: #FF5722;">🛵 TRACKING SALES + BIP OTOMATIS</h2>
   <div id="map"></div>
   <div id="form">
     <div class="coord-input">
       <input type="number" id="latitude" placeholder="Latitude" step="0.000001">
       <input type="number" id="longitude" placeholder="Longitude" step="0.000001">
     </div>
-    <button onclick="gunakanKoordinatSekarang()">Pakai Lokasi Sekarang</button>
-    <button onclick="gunakanKlikPeta()">Pakai Klik Peta</button>
-    <input type="text" id="category" placeholder="Nama Pelanggan / Kategori">
+    <button onclick="gunakanKoordinatSekarang()">📍 Pakai Lokasi Sekarang</button>
+    <button onclick="gunakanKlikPeta()">🗺️ Pakai Klik Peta</button>
+    <input type="text" id="category" placeholder="Nama Pelanggan">
     <textarea id="details" placeholder="Detail Pesanan..."></textarea>
     <button onclick="simpanTitik()" style="background: #FF5722;">💾 SIMPAN TITIK</button>
     <button onclick="exportData()">📤 EXPORT DATA</button>
@@ -35,45 +35,95 @@ IP<!DOCTYPE html>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    let db, map, currentLatLng, liveMarker;
-    let bipSound = new Audio("https://raw.githubusercontent.com/username-kamu/repo-kamu/main/bip.mp3"); // Ganti link GitHubmu!
+    // Inisialisasi
+    let map, currentLatLng, liveMarker;
+    const STORAGE_KEY = "SALES_TRACKER_DATA_V2";
+    const bipSound = new Audio("https://raw.githubusercontent.com/username-kamu/repo-kamu/main/bip.mp3"); // GANTI LINK INI!
 
-    // Inisialisasi Peta
+    // Init peta
     function initMap() {
-      map = L.map('map').setView([-6.9, 107.6], 18);
+      map = L.map('map').setView([-6.9, 107.6], 16);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-      
-      // Auto tracking lokasi
+      loadPoints();
+
+      // Auto tracking GPS
       if (navigator.geolocation) {
         navigator.geolocation.watchPosition(
-          pos => {
-            const lat = pos.coords.latitude;
-            const lng = pos.coords.longitude;
-            if (!liveMarker) {
-              liveMarker = L.marker([lat, lng], { 
-                icon: L.divIcon({ className: 'live-marker', html: '📍' }) 
-              }).addTo(map).bindPopup("LOKASI KAMU").openPopup();
-            } else {
-              liveMarker.setLatLng([lat, lng]);
-            }
-            map.setView([lat, lng], 15);
-          },
-          err => console.error("Error GPS: ", err),
+          pos => updatePosisi(pos),
+          err => console.error("GPS Error:", err),
           { enableHighAccuracy: true }
         );
       }
     }
 
-    // Fungsi untuk koordinat
+    // Update posisi + cek bip
+    function updatePosisi(pos) {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      
+      // Update marker
+      if (!liveMarker) {
+        liveMarker = L.marker([lat, lng]).addTo(map)
+          .bindPopup("LOKASI KAMU").openPopup();
+      } else {
+        liveMarker.setLatLng([lat, lng]);
+      }
+      map.setView([lat, lng], 18);
+
+      // Cek jarak ke semua titik
+      const savedData = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+      savedData.forEach(point => {
+        const jarak = hitungJarak(lat, lng, point.lat, point.lng);
+        
+        // BIP kalau < 100m
+        if (jarak < 100) {
+          playBip();
+          // Ngomong otomatis kalau < 50m
+          if (jarak < 50) {
+            speak(`Dekat ${point.category}, pesanan: ${point.details}`);
+          }
+        }
+      });
+    }
+
+    // Fungsi hitung jarak (meter)
+    function hitungJarak(lat1, lng1, lat2, lng2) {
+      const R = 6371e3;
+      const φ1 = lat1 * Math.PI/180;
+      const φ2 = lat2 * Math.PI/180;
+      const Δφ = (lat2-lat1) * Math.PI/180;
+      const Δλ = (lng2-lng1) * Math.PI/180;
+      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ/2) * Math.sin(Δλ/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    // Play BIP
+    function playBip() {
+      if (bipSound) {
+        bipSound.currentTime = 0;
+        bipSound.play().catch(e => console.log("BIP error:", e));
+      }
+    }
+
+    // Text-to-speech
+    function speak(text) {
+      if ('speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'id-ID';
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+
+    // Fungsi lainnya (simpan/load titik, dll) sama persis seperti kode sebelumnya
     function gunakanKoordinatSekarang() {
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(pos => {
           document.getElementById('latitude').value = pos.coords.latitude.toFixed(6);
           document.getElementById('longitude').value = pos.coords.longitude.toFixed(6);
-          alert("✅ Koordinat sekarang sudah dimasukkan!");
         });
-      } else {
-        alert("Browser tidak support GPS!");
       }
     }
 
@@ -82,30 +132,84 @@ IP<!DOCTYPE html>
         currentLatLng = e.latlng;
         document.getElementById('latitude').value = e.latlng.lat.toFixed(6);
         document.getElementById('longitude').value = e.latlng.lng.toFixed(6);
-        alert(`📍 Koordinat dipilih: ${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`);
       });
-      alert("Klik di peta untuk memilih lokasi!");
+      alert("Klik di peta untuk pilih lokasi!");
     }
 
-    // ... (Fungsi lainnya seperti simpanTitik(), exportData(), dll sama seperti sebelumnya)
-    // Lengkapnya bisa lihat di versi sebelumnya
+    function simpanTitik() {
+      const lat = parseFloat(document.getElementById('latitude').value);
+      const lng = parseFloat(document.getElementById('longitude').value);
+      const category = document.getElementById('category').value;
+      const details = document.getElementById('details').value;
 
-    // BIP Sound Turbo Mode
-    function playBip() {
-      bipSound.currentTime = 0;
-      bipSound.play().catch(e => console.log("Gagal play sound: ", e));
+      if (!lat || !lng) return alert("Isi koordinat dulu!");
+
+      const newPoint = {
+        id: Date.now(),
+        lat: lat,
+        lng: lng,
+        category: category,
+        details: details,
+        timestamp: new Date().toISOString()
+      };
+
+      const existingData = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+      existingData.push(newPoint);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(existingData));
+
+      alert("Data tersimpan!");
+      loadPoints();
     }
 
-    // Init saat halaman loaded
-    window.onload = function() {
-      initMap();
-      // Cek apakah bip.mp3 ada
-      bipSound.play().then(() => {
-        bipSound.pause();
-      }).catch(e => {
-        console.error("🚨 BIP.MP3 TIDAK DITEMUKAN! Pastikan file ada di GitHub!");
+    function loadPoints() {
+      map.eachLayer(layer => {
+        if (layer instanceof L.Marker && layer !== liveMarker) {
+          map.removeLayer(layer);
+        }
       });
-    };
+
+      const savedData = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+      savedData.forEach(point => {
+        const marker = L.marker([point.lat, point.lng]).addTo(map)
+          .bindPopup(`
+            <b>${point.category}</b><br>
+            ${point.details}<br>
+            <button onclick="hapusTitik(${point.id})">❌ Hapus</button>
+          `);
+      });
+    }
+
+    function hapusTitik(id) {
+      const savedData = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+      const newData = savedData.filter(point => point.id !== id);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
+      loadPoints();
+    }
+
+    function exportData() {
+      const data = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+      const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'sales_data.json';
+      a.click();
+    }
+
+    function importData(event) {
+      const file = event.target.files[0];
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const data = JSON.parse(e.target.result);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        loadPoints();
+        alert(`✅ ${data.length} data berhasil diimport!`);
+      };
+      reader.readAsText(file);
+    }
+
+    // Jalankan!
+    window.onload = initMap;
   </script>
 </body>
 </html>
