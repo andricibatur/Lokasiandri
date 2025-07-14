@@ -27,6 +27,11 @@
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
     let db, map, currentLatLng, editingId = null, liveMarker = null;
+    let lastAnnouncedPoint = null;
+    let announcementCount = 0;
+    let beepInterval = null;
+    let targetPoint = null;
+    const beepAudio = new Audio('data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU...'); // Short beep sound
 
     // IndexedDB setup
     const request = indexedDB.open('salesDB', 1);
@@ -42,12 +47,63 @@
     map = L.map('map').setView([-6.9, 107.6], 15);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
+    // Function to calculate distance between two points in meters
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371e3; // Earth radius in meters
+      const φ1 = lat1 * Math.PI/180;
+      const φ2 = lat2 * Math.PI/180;
+      const Δφ = (lat2-lat1) * Math.PI/180;
+      const Δλ = (lon2-lon1) * Math.PI/180;
+
+      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ/2) * Math.sin(Δλ/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+      return R * c;
+    }
+
+    // Function to speak text
+    function speak(text) {
+      if ('speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'id-ID';
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+
+    // Function to play beep sound
+    function playBeep() {
+      beepAudio.currentTime = 0;
+      beepAudio.play().catch(e => console.log("Beep play failed:", e));
+    }
+
+    // Function to start beeping based on distance
+    function startBeeping(distance) {
+      if (beepInterval) clearInterval(beepInterval);
+      
+      // Calculate beep interval (faster as distance decreases)
+      // Max interval at 100m (2000ms), min interval at 0m (200ms)
+      const interval = Math.max(200, 2000 - (1800 * (1 - distance/100)));
+      
+      beepInterval = setInterval(playBeep, interval);
+    }
+
+    // Function to stop beeping
+    function stopBeeping() {
+      if (beepInterval) {
+        clearInterval(beepInterval);
+        beepInterval = null;
+      }
+    }
+
     // Tag gerak-gerak + auto follow
     if (navigator.geolocation) {
       navigator.geolocation.watchPosition(
         function(pos) {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
+          
           if (!liveMarker) {
             liveMarker = L.circleMarker([lat, lng], {
               radius: 8,
@@ -58,8 +114,43 @@
           } else {
             liveMarker.setLatLng([lat, lng]);
           }
+          
           // Peta auto ikuti lokasi
           map.setView([lat, lng], 18);
+          
+          // Check distance to all points
+          const tx = db.transaction('points', 'readonly');
+          const store = tx.objectStore('points');
+          store.getAll().onsuccess = function(e) {
+            const points = e.target.result;
+            points.forEach(point => {
+              const distance = calculateDistance(lat, lng, point.lat, point.lng);
+              
+              // If within 100 meters of any point
+              if (distance <= 100) {
+                targetPoint = point;
+                
+                // Start beeping with frequency based on distance
+                startBeeping(distance);
+                
+                // Announce details at 50m, 30m, and 10m (only 3 times)
+                if ((distance <= 50 && announcementCount === 0) ||
+                    (distance <= 30 && announcementCount === 1) ||
+                    (distance <= 10 && announcementCount === 2)) {
+                  const announcement = `Pesanan ${point.category}: ${point.details}`;
+                  speak(announcement);
+                  announcementCount++;
+                }
+              } else {
+                // Reset announcement count when moving away
+                if (targetPoint && point.id === targetPoint.id) {
+                  announcementCount = 0;
+                  targetPoint = null;
+                  stopBeeping();
+                }
+              }
+            });
+          };
         },
         function(err) { console.error(err); },
         { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
