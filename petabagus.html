@@ -11,6 +11,8 @@
     #form { padding: 10px; }
     input, textarea { width: 100%; margin: 5px 0; }
     button { margin: 5px 2px; }
+    #soundStatus { color: red; font-weight: bold; }
+    #distanceInfo { margin-top: 5px; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -23,13 +25,20 @@
     <button onclick="exportData()">Export JSON</button>
     <input type="file" id="fileInput" onchange="importData(event)">
     <button onclick="updateCurrentLocation()">Gunakan Lokasi Saat Ini</button>
+    <button onclick="enableSound()">Aktifkan Suara Notifikasi</button>
+    <span id="soundStatus">[SUARA MATI]</span>
+    <div id="distanceInfo">Jarak ke titik terdekat: -</div>
   </div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
     let db, map, currentLatLng, editingId = null, liveMarker = null;
     let currentPosition = null;
-    const bipSound = new Audio('https://raw.githubusercontent.com/username/repo/main/bip.mp3');
+    let soundPermission = false;
+    let beepInterval = null;
+    let closestPointInfo = null;
+    const bipSound = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-alarm-digital-clock-beep-989.mp3');
+    bipSound.volume = 0.5;
 
     // IndexedDB setup
     const request = indexedDB.open('salesDB', 1);
@@ -45,7 +54,19 @@
     map = L.map('map').setView([-6.9, 107.6], 15);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    // Tag gerak-gerak + auto follow
+    function enableSound() {
+      bipSound.play().then(() => {
+        bipSound.pause();
+        bipSound.currentTime = 0;
+        soundPermission = true;
+        document.getElementById('soundStatus').textContent = '[SUARA AKTIF]';
+        document.getElementById('soundStatus').style.color = 'green';
+        alert("Suara notifikasi diaktifkan! Frekuensi suara akan meningkat saat mendekati titik.");
+      }).catch(e => {
+        alert("Izinkan suara di browser untuk mendengar notifikasi. Klik ikon mute di tab browser jika ada.");
+      });
+    }
+
     if (navigator.geolocation) {
       navigator.geolocation.watchPosition(
         function(pos) {
@@ -64,10 +85,7 @@
             liveMarker.setLatLng([lat, lng]);
           }
           
-          // Peta auto ikuti lokasi
           map.setView([lat, lng], 18);
-          
-          // Cek jarak ke semua titik
           checkDistanceToPoints(lat, lng);
         },
         function(err) { console.error(err); },
@@ -76,17 +94,73 @@
     }
 
     function checkDistanceToPoints(lat, lng) {
+      if (!db) return;
+      
       const tx = db.transaction('points', 'readonly');
       const store = tx.objectStore('points');
       store.getAll().onsuccess = function(e) {
         const points = e.target.result;
+        let closestDistance = Infinity;
+        closestPointInfo = null;
+        
         points.forEach(point => {
           const distance = calculateDistance(lat, lng, point.lat, point.lng);
-          if (distance <= 100) {
-            playBipSound(distance);
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            closestPointInfo = {
+              distance: distance,
+              point: point
+            };
           }
         });
+        
+        // Update UI with distance info
+        if (closestPointInfo) {
+          document.getElementById('distanceInfo').textContent = 
+            `Jarak ke titik terdekat: ${Math.round(closestPointInfo.distance)} meter - ${closestPointInfo.point.category}`;
+        }
+        
+        // Atur frekuensi beep berdasarkan jarak terdekat
+        if (closestDistance <= 200) {
+          updateBeepFrequency(closestDistance);
+        } else {
+          stopBeeping();
+          document.getElementById('distanceInfo').textContent = "Jarak ke titik terdekat: -";
+        }
       };
+    }
+
+    function updateBeepFrequency(distance) {
+      if (!soundPermission) return;
+      
+      stopBeeping();
+      
+      let interval;
+      if (distance <= 10) {
+        interval = 200; // 0.2 detik (200ms) untuk jarak ≤10m
+      } else if (distance <= 100) {
+        interval = 1000; // 1 detik untuk jarak ≤100m
+      } else {
+        interval = 5000; // 5 detik untuk jarak ≤200m
+      }
+      
+      // Mainkan suara pertama kali segera
+      playBeepSound();
+      
+      // Atur interval untuk suara berikutnya
+      beepInterval = setInterval(playBeepSound, interval);
+    }
+
+    function playBeepSound() {
+      bipSound.currentTime = 0;
+      bipSound.play().catch(e => console.log("Gagal memutar suara:", e));
+    }
+
+    function stopBeeping() {
+      if (beepInterval) {
+        clearInterval(beepInterval);
+        beepInterval = null;
+      }
     }
 
     function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -102,16 +176,6 @@
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 
       return R * c;
-    }
-
-    function playBipSound(distance) {
-      bipSound.play().catch(e => console.log("Autoplay prevented:", e));
-      
-      if (Notification.permission === "granted") {
-        new Notification("Anda mendekati titik!", {
-          body: `Jarak: ${Math.round(distance)} meter`
-        });
-      }
     }
 
     function updateCurrentLocation() {
@@ -250,7 +314,6 @@
       reader.readAsText(file);
     }
 
-    // Minta izin notifikasi
     if ('Notification' in window) {
       Notification.requestPermission();
     }
