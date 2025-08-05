@@ -40,6 +40,11 @@
     const bipSound = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-alarm-digital-clock-beep-989.mp3');
     bipSound.volume = 0.5;
 
+    let mapDragTimeout;
+    let lastPosition = null;
+    let positionChangeTimer = null;
+    let lastPositionTimestamp = null;
+    
     // IndexedDB setup
     const request = indexedDB.open('salesDB', 1);
     request.onupgradeneeded = function(e) {
@@ -53,6 +58,16 @@
 
     map = L.map('map').setView([-6.9, 107.6], 15);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    // Event listener untuk auto-recenter setelah 10 detik
+    map.on('dragstart', function() {
+      clearTimeout(mapDragTimeout);
+      mapDragTimeout = setTimeout(() => {
+        if (currentPosition) {
+          map.setView([currentPosition.lat, currentPosition.lng], 18);
+        }
+      }, 10000); // 10 detik
+    });
 
     function enableSound() {
       bipSound.play().then(() => {
@@ -73,6 +88,26 @@
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
           currentPosition = { lat, lng };
+
+          if (lastPosition && calculateDistance(lat, lng, lastPosition.lat, lastPosition.lng) > 5) {
+            // Jika posisi berubah lebih dari 5 meter, reset timer dan marker
+            clearTimeout(positionChangeTimer);
+            positionChangeTimer = null;
+            lastPositionTimestamp = Date.now();
+            if (liveMarker) {
+              liveMarker.setStyle({ color: 'red', fillColor: '#f03' });
+            }
+          } else {
+            // Jika posisi tidak berubah, cek waktu
+            if (positionChangeTimer === null) {
+              positionChangeTimer = setTimeout(() => {
+                if (liveMarker) {
+                  liveMarker.setStyle({ color: '#f03', fillColor: 'red' });
+                }
+              }, 19000); // 19 detik
+            }
+          }
+          lastPosition = currentPosition;
           
           if (!liveMarker) {
             liveMarker = L.circleMarker([lat, lng], {
@@ -101,23 +136,36 @@
       store.getAll().onsuccess = function(e) {
         const points = e.target.result;
         let closestDistance = Infinity;
+        let secondClosestDistance = Infinity;
+        let closestPoint = null;
         closestPointInfo = null;
         
         points.forEach(point => {
           const distance = calculateDistance(lat, lng, point.lat, point.lng);
           if (distance < closestDistance) {
+            secondClosestDistance = closestDistance;
             closestDistance = distance;
-            closestPointInfo = {
-              distance: distance,
-              point: point
-            };
+            closestPoint = point;
+          } else if (distance < secondClosestDistance) {
+            secondClosestDistance = distance;
           }
         });
-        
+
         // Update UI with distance info
-        if (closestPointInfo) {
-          document.getElementById('distanceInfo').textContent = 
-            `Jarak ke titik terdekat: ${Math.round(closestPointInfo.distance)} meter - ${closestPointInfo.point.category}`;
+        if (closestPoint) {
+            document.getElementById('distanceInfo').textContent = 
+                `Jarak ke titik terdekat: ${Math.round(closestDistance)} meter - ${closestPoint.category}`;
+            
+            // Check if we are at a point and display distance to the next one.
+            if (closestDistance < 20) { // Assume 20m is 'at the location'
+                if (secondClosestDistance !== Infinity) {
+                    document.getElementById('distanceInfo').textContent =
+                        `Anda berada di ${closestPoint.category}. Jarak ke titik berikutnya: ${Math.round(secondClosestDistance)} meter.`;
+                } else {
+                    document.getElementById('distanceInfo').textContent =
+                        `Anda berada di ${closestPoint.category}. Tidak ada titik lain yang terdekat.`;
+                }
+            }
         }
         
         // Atur frekuensi beep berdasarkan jarak terdekat
@@ -125,7 +173,6 @@
           updateBeepFrequency(closestDistance);
         } else {
           stopBeeping();
-          document.getElementById('distanceInfo').textContent = "Jarak ke titik terdekat: -";
         }
       };
     }
@@ -217,9 +264,8 @@
 
     function loadPoints() {
       map.eachLayer((layer) => {
-        if (layer instanceof L.Marker && layer !== liveMarker) map.removeLayer(layer);
+        if (layer instanceof L.Marker || (layer instanceof L.CircleMarker && layer !== liveMarker)) map.removeLayer(layer);
       });
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
       if (liveMarker) liveMarker.addTo(map);
 
       const tx = db.transaction('points', 'readonly');
@@ -231,6 +277,13 @@
           const marker = L.marker([p.lat, p.lng]).addTo(map);
           marker.bindPopup(`<b>${p.category}</b><br>${p.details}<br>
             <button onclick="editPoint(${cursor.key})">Edit</button>`);
+
+          marker.on('popupopen', function() {
+            setTimeout(() => {
+              map.closePopup();
+            }, 5000);
+          });
+          
           cursor.continue();
         }
       };
