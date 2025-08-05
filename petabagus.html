@@ -37,14 +37,12 @@
     let soundPermission = false;
     let beepInterval = null;
     let closestPointInfo = null;
-    const bipSound = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-alarm-digital-clock-beep-989.mp3');
-    bipSound.volume = 0.5;
-
     let mapDragTimeout;
     let lastPosition = null;
     let positionChangeTimer = null;
     let lastPositionTimestamp = null;
-    
+    let spokenDistance = 0;
+
     // IndexedDB setup
     const request = indexedDB.open('salesDB', 1);
     request.onupgradeneeded = function(e) {
@@ -70,16 +68,20 @@
     });
 
     function enableSound() {
-      bipSound.play().then(() => {
-        bipSound.pause();
-        bipSound.currentTime = 0;
-        soundPermission = true;
-        document.getElementById('soundStatus').textContent = '[SUARA AKTIF]';
-        document.getElementById('soundStatus').style.color = 'green';
-        alert("Suara notifikasi diaktifkan! Frekuensi suara akan meningkat saat mendekati titik.");
-      }).catch(e => {
-        alert("Izinkan suara di browser untuk mendengar notifikasi. Klik ikon mute di tab browser jika ada.");
-      });
+        if ('speechSynthesis' in window) {
+            soundPermission = true;
+            document.getElementById('soundStatus').textContent = '[SUARA AKTIF]';
+            document.getElementById('soundStatus').style.color = 'green';
+            alert("Suara notifikasi diaktifkan!");
+        } else {
+            alert("Browser Anda tidak mendukung Web Speech API. Silakan gunakan browser lain (seperti Chrome atau Firefox).");
+        }
+    }
+
+    function speakText(text) {
+        if (!soundPermission) return;
+        const speech = new SpeechSynthesisUtterance(text);
+        speechSynthesis.speak(speech);
     }
 
     if (navigator.geolocation) {
@@ -89,22 +91,23 @@
           const lng = pos.coords.longitude;
           currentPosition = { lat, lng };
 
-          if (lastPosition && calculateDistance(lat, lng, lastPosition.lat, lastPosition.lng) > 5) {
-            // Jika posisi berubah lebih dari 5 meter, reset timer dan marker
-            clearTimeout(positionChangeTimer);
-            positionChangeTimer = null;
-            lastPositionTimestamp = Date.now();
-            if (liveMarker) {
-              liveMarker.setStyle({ color: 'red', fillColor: '#f03' });
-            }
-          } else {
-            // Jika posisi tidak berubah, cek waktu
-            if (positionChangeTimer === null) {
-              positionChangeTimer = setTimeout(() => {
-                if (liveMarker) {
-                  liveMarker.setStyle({ color: '#f03', fillColor: 'red' });
-                }
-              }, 19000); // 19 detik
+          if (lastPosition) {
+            const distanceMoved = calculateDistance(lat, lng, lastPosition.lat, lastPosition.lng);
+            if (distanceMoved > 5) { // Jika bergerak lebih dari 5 meter
+              clearTimeout(positionChangeTimer);
+              positionChangeTimer = null;
+              lastPositionTimestamp = Date.now();
+              if (liveMarker) {
+                liveMarker.setStyle({ color: 'red', fillColor: '#f03', fillOpacity: 0.5 });
+              }
+            } else {
+              if (positionChangeTimer === null) {
+                positionChangeTimer = setTimeout(() => {
+                  if (liveMarker) {
+                    liveMarker.setStyle({ color: 'red', fillColor: 'red', fillOpacity: 1 });
+                  }
+                }, 19000); // 19 detik
+              }
             }
           }
           lastPosition = currentPosition;
@@ -168,46 +171,17 @@
             }
         }
         
-        // Atur frekuensi beep berdasarkan jarak terdekat
-        if (closestDistance <= 200) {
-          updateBeepFrequency(closestDistance);
-        } else {
-          stopBeeping();
+        // Atur suara berdasarkan jarak
+        if (closestDistance < 100 && spokenDistance === 0) {
+            speakText("100 meter lagi");
+            spokenDistance = 2;
+        } else if (closestDistance < 20 && spokenDistance === 1) {
+            speakText("Anda sudah sampai");
+            spokenDistance = 2;
+        } else if (closestDistance > 100) {
+            spokenDistance = 0;
         }
       };
-    }
-
-    function updateBeepFrequency(distance) {
-      if (!soundPermission) return;
-      
-      stopBeeping();
-      
-      let interval;
-      if (distance <= 10) {
-        interval = 200; // 0.2 detik (200ms) untuk jarak ≤10m
-      } else if (distance <= 100) {
-        interval = 1000; // 1 detik untuk jarak ≤100m
-      } else {
-        interval = 5000; // 5 detik untuk jarak ≤200m
-      }
-      
-      // Mainkan suara pertama kali segera
-      playBeepSound();
-      
-      // Atur interval untuk suara berikutnya
-      beepInterval = setInterval(playBeepSound, interval);
-    }
-
-    function playBeepSound() {
-      bipSound.currentTime = 0;
-      bipSound.play().catch(e => console.log("Gagal memutar suara:", e));
-    }
-
-    function stopBeeping() {
-      if (beepInterval) {
-        clearInterval(beepInterval);
-        beepInterval = null;
-      }
     }
 
     function calculateDistance(lat1, lon1, lat2, lon2) {
