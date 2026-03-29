@@ -3,6 +3,12 @@
 * https://andricibatur.github.io/Lokasiandri/
 -
 
+## ☕ Dukung Pengembang / Support the Dev
+Jika aplikasi ini membantu bisnis Anda, Anda bisa mendukung pengembangan fitur selanjutnya melalui:
+
+* **DANA:** `081312348721` (Andri Andrian)
+* **LinkAja:** `081312348721` (Andri Andrian)
+* 
 ## 🌍 Multi-Language Support
 * [Bahasa Indonesia](#indonesian)
 * [English](#english)
@@ -136,4 +142,8 @@ If this solution adds value to your business operations, consider supporting the
 ---
 *Optimized for Performance | Built by **Andri Andrian** using Flutter & Local-First Architecture*
 
+## ☕ Dukung Pengembang / Support the Dev
+Jika aplikasi ini membantu bisnis Anda, Anda bisa mendukung pengembangan fitur selanjutnya melalui:
 
+* **DANA:** `081312348721` (Andri Andrian)
+* **LinkAja:** `081312348721` (Andri Andrian)
